@@ -96,8 +96,41 @@ void main() {
     expect(one, two);
   });
 
-  test('the first 300 generated levels are all solvable', () {
-    for (var n = 1; n <= 300; n++) {
+  test('every 5th level is Hard and every 10th is Super Hard', () {
+    expect(LevelGenerator.tierFor(1), LevelTier.normal);
+    expect(LevelGenerator.tierFor(5), LevelTier.hard);
+    expect(LevelGenerator.tierFor(10), LevelTier.superHard);
+    expect(LevelGenerator.tierFor(15), LevelTier.hard);
+    expect(LevelGenerator.tierFor(23), LevelTier.normal);
+  });
+
+  test('difficulty grows with the level number', () {
+    double averageLayers(Iterable<int> levels) {
+      var sum = 0;
+      for (final n in levels) {
+        final level = LevelGenerator.generate(n);
+        sum += PuzzleBoard(
+          rows: level.rows,
+          cols: level.cols,
+          arrows: level.arrows,
+        ).analyze().layers;
+      }
+      return sum / levels.length;
+    }
+
+    final early = averageLayers([for (var n = 1; n <= 9; n++) n]);
+    final late = averageLayers([for (var n = 101; n <= 109; n++) n]);
+    final superHard = averageLayers([for (var n = 110; n <= 190; n += 10) n]);
+    expect(late, greaterThan(early * 2));
+    expect(superHard, greaterThanOrEqualTo(late));
+
+    final big = LevelGenerator.generate(200);
+    expect(big.cols, LevelGenerator.maxCols);
+    expect(big.rows, LevelGenerator.maxRows);
+  });
+
+  test('the first 500 generated levels are all solvable', () {
+    for (var n = 1; n <= 500; n++) {
       final level = LevelGenerator.generate(n);
       expect(level.arrows, isNotEmpty, reason: 'level $n is empty');
       final board = PuzzleBoard(
@@ -105,8 +138,8 @@ void main() {
         cols: level.cols,
         arrows: level.arrows,
       );
-      expect(board.solve(), isNotNull, reason: 'level $n is stuck');
-      // Replaying the greedy solution through the game rules clears it.
+      expect(board.analyze().solvable, isTrue, reason: 'level $n is stuck');
+      // Replaying a solution through the game rules clears it.
       final game = GameController(level);
       while (game.status == GameStatus.playing) {
         final free = game.board.freeArrows();

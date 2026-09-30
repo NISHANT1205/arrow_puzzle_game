@@ -120,6 +120,39 @@ class PuzzleBoard {
           if (canEscape(a)) a,
       ];
 
+  /// Measures how hard the board is. See [BoardStats].
+  BoardStats analyze() {
+    final copy = PuzzleBoard(rows: rows, cols: cols, arrows: arrows);
+    final total = copy.count;
+    final initialFree = copy.freeArrows().length;
+    var layers = 0;
+    var narrowest = total;
+    while (!copy.isCleared) {
+      final free = copy.freeArrows();
+      if (free.isEmpty) {
+        return BoardStats(
+          arrows: total,
+          initialFree: initialFree,
+          layers: layers,
+          narrowest: narrowest,
+          solvable: false,
+        );
+      }
+      layers++;
+      if (free.length < narrowest) narrowest = free.length;
+      for (final a in free) {
+        copy.remove(a.id);
+      }
+    }
+    return BoardStats(
+      arrows: total,
+      initialFree: initialFree,
+      layers: layers,
+      narrowest: narrowest,
+      solvable: true,
+    );
+  }
+
   /// Removing an arrow only ever frees cells, so repeatedly removing any free
   /// arrow clears the board exactly when the puzzle is solvable. Returns a
   /// full clearing order, or null when the board is stuck.
@@ -136,4 +169,37 @@ class PuzzleBoard {
     }
     return order;
   }
+}
+
+/// Difficulty numbers for a board.
+class BoardStats {
+  const BoardStats({
+    required this.arrows,
+    required this.initialFree,
+    required this.layers,
+    required this.narrowest,
+    required this.solvable,
+  });
+
+  final int arrows;
+
+  /// Arrows that can leave at the very start. Fewer means more traps.
+  final int initialFree;
+
+  /// Rounds needed when every free arrow is removed at once: the length of
+  /// the longest chain of "this arrow must go before that one".
+  final int layers;
+
+  /// Fewest free arrows seen in any round: a bottleneck where only a couple
+  /// of moves are safe.
+  final int narrowest;
+
+  final bool solvable;
+
+  /// Share of arrows that are traps at the start (0 = all free).
+  double get trapRatio => arrows == 0 ? 0 : 1 - initialFree / arrows;
+
+  @override
+  String toString() => 'arrows=$arrows free=$initialFree layers=$layers '
+      'narrowest=$narrowest solvable=$solvable';
 }

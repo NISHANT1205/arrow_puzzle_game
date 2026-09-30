@@ -17,27 +17,59 @@ before you run out of hearts.
 - **Hint** highlights an arrow that can escape right now.
 - **Out of hearts**: retry the level, or continue once with +1 heart.
 - **Win**: clear every arrow to unlock the next level.
-- **Pinch to zoom** and pan on big boards.
+- **Pinch to zoom** (up to 6×) and pan on big boards.
 
 ## Levels
 
 Levels are generated on the fly and never run out. The same level number
 always gives the same puzzle.
 
-- Boards grow from 4×6 up to 16×22, arrows get longer, and the grid gets
-  denser as you progress.
-- Every level is guaranteed solvable because of how it is built: arrows are
-  placed one at a time, and each new arrow's escape lane must be clear of the
-  arrows already placed. Removing them in reverse order always works.
-- Several candidates are built per level and the most tightly packed one is
-  kept (about 85% of the grid is covered on average).
-- Removing an arrow never blocks another one, so a board is solvable exactly
-  when greedily removing free arrows clears it. `PuzzleBoard.solve()` uses
-  this, and the tests check the first 300 levels.
+### Difficulty
+
+| Levels | Board | What changes |
+|---|---|---|
+| 1–4 | 4×6 | Tutorial: short arrows, most of them free |
+| 5–40 | up to 14×19 | Boards grow fast, arrows get longer and bend more |
+| 40–160 | up to 18×25 | Slow growth, more arrows aimed across the board |
+| every 5th | +2 columns | **HARD** badge, longer arrows, 95% fill target |
+| every 10th | +4 columns, up to 22×30 | **SUPER HARD** badge, 97% fill target, most tries |
+
+How hard levels are made hard:
+
+- **Aimed arrows**: many arrows point along their longest clear lane, so later
+  arrows end up in that lane and must be moved first. This builds long chains
+  of "move that one first".
+- **Scored candidates**: several boards are built for each level (6 normal,
+  10 Hard, 16 Super Hard). The winner is picked on fill, chain length, and
+  how few arrows are free at the start.
+- **Tail filling**: after building, arrow tails grow into leftover holes, so
+  boards end up about 90% full, like the original.
+
+`PuzzleBoard.analyze()` reports the numbers used:
+
+- `free`: arrows free at the start
+- `layers`: the longest "this must go before that" chain
+- `narrowest`: the tightest moment, when only 1 or 2 moves are safe
+
+### Always solvable
+
+Arrows are placed one at a time, and each new arrow's escape lane must be
+clear of the arrows already placed. Removing them in reverse order always
+works. Tail filling only adds cells that no later arrow's lane needs, so it
+keeps this guarantee.
+
+Removing an arrow never blocks another one, so a board is solvable exactly
+when greedily removing free arrows clears it. The tests replay levels 1–500,
+and the tool below checks any range:
 
 ```bash
-dart run tool/level_stats.dart 1 100   # size / arrow count / fill per level
+dart run tool/level_stats.dart 1 5000
+# level 100 [Super Hard] 20x27 fill=88% arrows=56 free=9 layers=13 narrowest=1 solvable=true
+# checked 5000 levels: unsolvable=0
 ```
+
+Levels are generated on a background isolate, so big boards never freeze
+the UI.
 
 ## Project structure
 
@@ -62,6 +94,7 @@ lib/
   widgets/
     arrow_board_view.dart       Dot grid, arrow painter, tap + animations
     hearts_bar.dart
+    tier_badge.dart             HARD / SUPER HARD pill
   services/                     Storage, system sounds, haptics
 test/arrow_puzzle_test.dart     Rules, lives, hints, generator solvability
 tool/level_stats.dart

@@ -1,5 +1,6 @@
 // lib/screens/game_screen.dart
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,6 +12,7 @@ import '../state/game_controller.dart';
 import '../state/progress_provider.dart';
 import '../widgets/arrow_board_view.dart';
 import '../widgets/hearts_bar.dart';
+import '../widgets/tier_badge.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   const GameScreen({super.key, required this.levelNumber});
@@ -22,7 +24,10 @@ class GameScreen extends ConsumerStatefulWidget {
 }
 
 class _GameScreenState extends ConsumerState<GameScreen> {
-  late GameController _game;
+  /// Null while the level is being generated.
+  GameController? _current;
+  GameController get _game => _current!;
+  int _loadingLevel = 0;
   final TransformationController _zoom = TransformationController();
   bool _revived = false;
   bool _dialogOpen = false;
@@ -33,15 +38,23 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _load(widget.levelNumber);
   }
 
-  void _load(int number) {
-    _game = GameController(LevelGenerator.generate(number));
-    _revived = false;
-    _zoom.value = Matrix4.identity();
+  /// Builds the level on a background isolate: big Super Hard boards take a
+  /// moment to generate and must not freeze the UI.
+  Future<void> _load(int number) async {
+    _loadingLevel = number;
+    final level = await compute(LevelGenerator.generate, number);
+    if (!mounted || _loadingLevel != number) return;
+    setState(() {
+      _current?.dispose();
+      _current = GameController(level);
+      _revived = false;
+      _zoom.value = Matrix4.identity();
+    });
   }
 
   @override
   void dispose() {
-    _game.dispose();
+    _current?.dispose();
     _zoom.dispose();
     super.dispose();
   }
@@ -95,11 +108,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (!mounted) return;
     switch (action) {
       case _ResultAction.next:
+        final next = _game.level.number + 1;
         setState(() {
-          final old = _game;
-          _load(old.level.number + 1);
-          old.dispose();
+          _current?.dispose();
+          _current = null;
         });
+        _load(next);
       case _ResultAction.retry:
         setState(() {
           _game.restart();
@@ -138,6 +152,25 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final dark = theme.brightness == Brightness.dark;
     final palette = dark ? BoardPalette.dark : BoardPalette.light;
 
+    if (_current == null) {
+      return Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              _TopBar(
+                level: _loadingLevel,
+                onBack: () => Navigator.of(context).pop(),
+                onRestart: () {},
+              ),
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
@@ -165,7 +198,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     return InteractiveViewer(
                       transformationController: _zoom,
                       minScale: 1,
-                      maxScale: 4,
+                      maxScale: 6,
                       boundaryMargin: const EdgeInsets.all(120),
                       child: SizedBox(
                         width: constraints.maxWidth,
@@ -218,13 +251,20 @@ class _TopBar extends StatelessWidget {
         children: [
           _RoundIconButton(icon: Icons.arrow_back_rounded, onTap: onBack),
           Expanded(
-            child: Text(
-              'Level $level',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: .3,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Level $level',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .3,
+                  ),
+                ),
+                if (LevelGenerator.tierFor(level) != LevelTier.normal)
+                  TierBadge(tier: LevelGenerator.tierFor(level)),
+              ],
             ),
           ),
           _RoundIconButton(icon: Icons.refresh_rounded, onTap: onRestart),

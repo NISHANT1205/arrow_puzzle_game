@@ -3,7 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../engine/level_generator.dart';
 import '../state/progress_provider.dart';
+import '../widgets/tier_badge.dart';
 
 /// Grid of levels. Cleared and current levels are playable; the next few
 /// locked levels are shown greyed out.
@@ -54,17 +56,32 @@ class LevelSelectScreen extends ConsumerWidget {
                       Navigator.of(context).pop();
                       onPlay(level);
                     },
-              child: Center(
-                child: locked
-                    ? Icon(Icons.lock_rounded, color: fg, size: 20)
-                    : Text(
-                        '$level',
-                        style: TextStyle(
-                          color: fg,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                        ),
+              child: Stack(
+                children: [
+                  if (LevelGenerator.tierFor(level) != LevelTier.normal)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Icon(
+                        Icons.local_fire_department_rounded,
+                        size: 16,
+                        color:
+                            TierBadge.colorFor(LevelGenerator.tierFor(level)),
                       ),
+                    ),
+                  Center(
+                    child: locked
+                        ? Icon(Icons.lock_rounded, color: fg, size: 20)
+                        : Text(
+                            '$level',
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                  ),
+                ],
               ),
             ),
           );

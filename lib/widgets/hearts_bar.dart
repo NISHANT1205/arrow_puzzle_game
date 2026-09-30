@@ -13,7 +13,8 @@ class HeartsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final empty = Theme.of(context).colorScheme.onSurface.withValues(alpha: .18);
+    final empty =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: .18);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

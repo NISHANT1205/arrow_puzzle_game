@@ -16,6 +16,17 @@ import '../models/arrow_path.dart';
 import '../models/level.dart';
 import 'puzzle_board.dart';
 
+/// Difficulty badge shown on a level, like the "Hard" / "Super Hard" levels
+/// of the original game.
+enum LevelTier {
+  normal('Normal'),
+  hard('Hard'),
+  superHard('Super Hard');
+
+  const LevelTier(this.label);
+  final String label;
+}
+
 /// Size and density knobs for one level.
 class LevelConfig {
   const LevelConfig({
@@ -25,6 +36,9 @@ class LevelConfig {
     required this.maxLength,
     required this.fill,
     required this.straightness,
+    required this.aimAcross,
+    required this.candidates,
+    required this.difficultyWeight,
   });
 
   final int rows;
@@ -39,41 +53,101 @@ class LevelConfig {
 
   /// Probability that a body keeps going straight instead of turning.
   final double straightness;
+
+  /// Probability that a new arrow points across the board (longest clear
+  /// lane) instead of a random way. Long lanes get crossed by later arrows,
+  /// which creates longer chains of "move that one first".
+  final double aimAcross;
+
+  /// Boards built per level; the best-scoring one is kept.
+  final int candidates;
+
+  /// How much the candidate score favours hard boards over packed ones.
+  final double difficultyWeight;
 }
 
 class LevelGenerator {
   const LevelGenerator._();
 
-  /// Difficulty curve: boards grow, arrows get longer and the grid gets
-  /// denser as the level number rises.
+  /// Every 5th level is Hard and every 10th is Super Hard.
+  static LevelTier tierFor(int number) {
+    if (number >= 10 && number % 10 == 0) return LevelTier.superHard;
+    if (number >= 5 && number % 5 == 0) return LevelTier.hard;
+    return LevelTier.normal;
+  }
+
+  /// Largest board the generator will build. Big boards are played with
+  /// pinch-to-zoom, like the late levels of the original.
+  static const int maxCols = 22;
+  static const int maxRows = 30;
+
+  /// Difficulty curve: boards grow, arrows get longer, the grid gets denser
+  /// and candidates are picked more for difficulty as the level number
+  /// rises. Hard and Super Hard levels jump ahead of the curve.
   static LevelConfig configFor(int number) {
     final n = max(1, number);
-    final cols = min(4 + (n - 1) ~/ 4, 16);
-    final rows = min(cols + 1 + cols ~/ 3, 22);
+    final tier = tierFor(n);
+    final int boost = switch (tier) {
+      LevelTier.normal => 0,
+      LevelTier.hard => 2,
+      LevelTier.superHard => 4,
+    };
+    // Fast growth for the first 40 levels, then slowly up to the maximum.
+    final int base = min(4 + (n - 1) ~/ 4, 14) + min(max(0, n - 40) ~/ 30, 4);
+    final cols = min(base + boost, maxCols);
+    final rows = min(cols + 1 + cols ~/ 3, maxRows);
+    final ramp = min(n / 100, 1.0); // 0 at level 1, 1 from level 100.
     return LevelConfig(
       rows: rows,
       cols: cols,
       minLength: 2,
-      maxLength: min(3 + n ~/ 3, 16),
-      fill: min(0.62 + n * 0.008, 0.96),
-      straightness: n < 10 ? 0.7 : 0.55,
+      maxLength: min(3 + n ~/ 3, 14) + boost,
+      fill: switch (tier) {
+        LevelTier.normal => min(0.62 + n * 0.008, 0.94),
+        LevelTier.hard => 0.95,
+        LevelTier.superHard => 0.97,
+      },
+      straightness: n < 10 ? 0.7 : 0.55 - ramp * .1,
+      aimAcross: n < 5 ? 0 : 0.25 + ramp * .35 + boost * .05,
+      candidates: switch (tier) {
+        LevelTier.normal => 6,
+        LevelTier.hard => 10,
+        LevelTier.superHard => 16,
+      },
+      difficultyWeight: n < 5
+          ? 0
+          : switch (tier) {
+              LevelTier.normal => 0.4 + ramp * 0.6,
+              LevelTier.hard => 1.5,
+              LevelTier.superHard => 2.5,
+            },
     );
   }
 
-  /// Candidate boards built per level; the most tightly packed one wins.
-  static const int _candidates = 6;
+  /// Higher is better: packed boards with long dependency chains and few
+  /// arrows that are free at the start.
+  static double _score(LevelConfig config, List<ArrowPath> arrows) {
+    final filled = arrows.fold<int>(0, (sum, a) => sum + a.length);
+    final fill = filled / (config.rows * config.cols);
+    if (config.difficultyWeight == 0) return fill;
+    final stats =
+        PuzzleBoard(rows: config.rows, cols: config.cols, arrows: arrows)
+            .analyze();
+    final depth = stats.layers / sqrt(max(1, stats.arrows));
+    return fill + config.difficultyWeight * (depth * .5 + stats.trapRatio);
+  }
 
   static Level generate(int number) {
     final config = configFor(number);
     List<ArrowPath> best = const [];
-    var bestFilled = -1;
-    for (var attempt = 0; attempt < _candidates; attempt++) {
+    var bestScore = double.negativeInfinity;
+    for (var attempt = 0; attempt < config.candidates; attempt++) {
       final rng = Random(number * 7919 + attempt * 104729 + 17);
       final arrows = _build(config, rng);
-      final filled = arrows.fold<int>(0, (sum, a) => sum + a.length);
-      if (filled > bestFilled) {
+      final score = _score(config, arrows);
+      if (score > bestScore) {
         best = arrows;
-        bestFilled = filled;
+        bestScore = score;
       }
     }
 
@@ -113,11 +187,14 @@ class LevelGenerator {
       var head = Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
       if (filled < target * .5) {
         for (var i = 0; i < 3; i++) {
-          final other = Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
+          final other =
+              Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
           if (_depth(config, other) > _depth(config, head)) head = other;
         }
       }
-      final dir = Dir.values[rng.nextInt(4)];
+      final dir = rng.nextDouble() < config.aimAcross
+          ? _longestLane(board, head) ?? Dir.values[rng.nextInt(4)]
+          : Dir.values[rng.nextInt(4)];
       final cells = _grow(board, rng, config, head, dir);
       if (cells == null) {
         failures++;
@@ -142,7 +219,72 @@ class LevelGenerator {
       }
     }
 
+    // Tutorial levels keep their short arrows.
+    if (config.difficultyWeight > 0) {
+      _extendTails(board, arrows, rng, config.maxLength + 4);
+    }
     return arrows;
+  }
+
+  /// Fills holes by growing arrow tails into neighbouring empty cells.
+  ///
+  /// Arrow k is removed before every arrow placed earlier and after every
+  /// arrow placed later. So a cell may join arrow k only if no arrow placed
+  /// after k needs that cell for its escape lane, and it is not in k's own
+  /// lane. Heads never move, so lanes never change and the level stays
+  /// solvable. [arrows] is in placement order and is updated in place.
+  static void _extendTails(
+    PuzzleBoard board,
+    List<ArrowPath> arrows,
+    Random rng,
+    int maxLength,
+  ) {
+    // For every cell, the latest placed arrow whose lane crosses it.
+    final latestLane = <Cell, int>{};
+    for (var k = 0; k < arrows.length; k++) {
+      final a = arrows[k];
+      var c = a.head.step(a.direction);
+      while (board.inBounds(c)) {
+        latestLane[c] = k;
+        c = c.step(a.direction);
+      }
+    }
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      final order = [for (var k = 0; k < arrows.length; k++) k]..shuffle(rng);
+      for (final k in order) {
+        final a = arrows[k];
+        if (a.length >= maxLength) continue;
+        final dirs = [...Dir.values]..shuffle(rng);
+        for (final d in dirs) {
+          final c = a.tail.step(d);
+          if (!board.inBounds(c) || !board.isEmpty(c)) continue;
+          if ((latestLane[c] ?? -1) >= k) continue;
+          final grown = ArrowPath(id: a.id, cells: [c, ...a.cells]);
+          board.remove(a.id);
+          board.add(grown);
+          arrows[k] = grown;
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /// Direction with the longest clear lane from [head], if any is clear.
+  static Dir? _longestLane(PuzzleBoard board, Cell head) {
+    Dir? best;
+    var bestLength = -1;
+    for (final d in Dir.values) {
+      final lane = _clearLane(board, head, d, const {});
+      if (lane != null && lane.length > bestLength) {
+        best = d;
+        bestLength = lane.length;
+      }
+    }
+    return best;
   }
 
   static int _depth(LevelConfig config, Cell c) => min(
@@ -249,8 +391,8 @@ class LevelGenerator {
 
     final path = [head, neck];
     body.add(neck);
-    final wanted = config.minLength +
-        rng.nextInt(config.maxLength - config.minLength + 1);
+    final wanted =
+        config.minLength + rng.nextInt(config.maxLength - config.minLength + 1);
 
     var heading = dir.opposite; // Direction we walk while growing backwards.
     while (path.length < wanted) {

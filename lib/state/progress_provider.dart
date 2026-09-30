@@ -31,8 +31,10 @@ class ProgressNotifier extends StateNotifier<Progress> {
 
   /// Records a win on [level] and unlocks the next one.
   Future<void> completeLevel(int level) async {
-    final next = level + 1 > state.currentLevel ? level + 1 : state.currentLevel;
-    state = Progress(currentLevel: next, levelsCleared: state.levelsCleared + 1);
+    final next =
+        level + 1 > state.currentLevel ? level + 1 : state.currentLevel;
+    state =
+        Progress(currentLevel: next, levelsCleared: state.levelsCleared + 1);
     await _storage.saveInt('current_level', state.currentLevel);
     await _storage.saveInt('levels_cleared', state.levelsCleared);
   }
@@ -44,5 +46,5 @@ class ProgressNotifier extends StateNotifier<Progress> {
   }
 }
 
-final progressProvider =
-    StateNotifierProvider<ProgressNotifier, Progress>((ref) => ProgressNotifier());
+final progressProvider = StateNotifierProvider<ProgressNotifier, Progress>(
+    (ref) => ProgressNotifier());

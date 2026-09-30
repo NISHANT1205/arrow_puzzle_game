@@ -315,7 +315,8 @@ List<Offset> buildTrack(ArrowPath arrow, int extra) {
   return [
     for (final c in arrow.cells) Offset(c.col + .5, c.row + .5),
     for (var i = 1; i <= extra; i++)
-      Offset(arrow.head.col + .5 + dir.dCol * i, arrow.head.row + .5 + dir.dRow * i),
+      Offset(arrow.head.col + .5 + dir.dCol * i,
+          arrow.head.row + .5 + dir.dRow * i),
   ];
 }
 
@@ -422,12 +423,14 @@ class _BoardPainter extends CustomPainter {
     final normal = Offset(-axis.dy, axis.dx);
     final head = Path()
       ..moveTo(tipPx.dx, tipPx.dy)
-      ..lineTo(basePx.dx + normal.dx * headHalf, basePx.dy + normal.dy * headHalf)
+      ..lineTo(
+          basePx.dx + normal.dx * headHalf, basePx.dy + normal.dy * headHalf)
       ..lineTo(
         lerpDouble(basePx.dx, tipPx.dx, .12)!,
         lerpDouble(basePx.dy, tipPx.dy, .12)!,
       )
-      ..lineTo(basePx.dx - normal.dx * headHalf, basePx.dy - normal.dy * headHalf)
+      ..lineTo(
+          basePx.dx - normal.dx * headHalf, basePx.dy - normal.dy * headHalf)
       ..close();
     canvas.drawPath(
       head,
