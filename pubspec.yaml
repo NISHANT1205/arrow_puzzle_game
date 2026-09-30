@@ -1,5 +1,5 @@
 name: arrow_puzzle
-description: A complete arrow puzzle game with 200+ generated, validated levels.
+description: "Arrow puzzle: tap snake-like arrows to slide them off the board without crashing. Endless, always-solvable levels."
 
 publish_to: 'none'
 
@@ -13,38 +13,22 @@ dependencies:
     sdk: flutter
   
   # State management
-  riverpod: ^2.4.0
   flutter_riverpod: ^2.4.0
-  
+
   # Persistence
   shared_preferences: ^2.2.0
-  hive: ^2.2.0
-  hive_flutter: ^1.1.0
-  
-  # Audio
-  audioplayers: ^5.2.0
-  
-  # Animations and effects
-  flutter_animate: ^4.1.0
-  confetti: ^0.7.0
-  
-  # Utilities
-  uuid: ^4.0.0
   
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^3.0.0
-  build_runner: ^2.4.0
-  hive_generator: ^2.0.0
   flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
 
   assets:
-    - assets/data/
     - assets/icon/
 
 flutter_launcher_icons:

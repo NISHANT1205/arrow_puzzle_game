@@ -1,572 +1,426 @@
-import 'package:confetti/confetti.dart';
+// lib/screens/game_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/level.dart';
+import '../engine/level_generator.dart';
+import '../engine/puzzle_board.dart';
 import '../services/audio_service.dart';
-import '../services/level_repository.dart';
-import '../state/game_provider.dart';
+import '../services/haptic_service.dart';
+import '../state/game_controller.dart';
 import '../state/progress_provider.dart';
-import '../widgets/arrow_board_widget.dart';
-import '../widgets/maze_arrow.dart';
-import 'settings_screen.dart';
+import '../widgets/arrow_board_view.dart';
+import '../widgets/hearts_bar.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
-  final Level level;
+  const GameScreen({super.key, required this.levelNumber});
 
-  const GameScreen({super.key, required this.level});
+  final int levelNumber;
 
   @override
   ConsumerState<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends ConsumerState<GameScreen>
-    with SingleTickerProviderStateMixin {
-  final _audio = AudioService();
-  late final AnimationController _entranceController;
-  late final Animation<double> _fade;
-  late final Animation<double> _scale;
+class _GameScreenState extends ConsumerState<GameScreen> {
+  late GameController _game;
+  final TransformationController _zoom = TransformationController();
+  bool _revived = false;
+  bool _dialogOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 650),
-    );
-    _fade = CurvedAnimation(
-      parent: _entranceController,
-      curve: const Interval(0, .75, curve: Curves.easeOut),
-    );
-    _scale = Tween(begin: .92, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOutBack),
-    );
-    Future.microtask(() {
-      ref.read(gameProvider.notifier).startGame(widget.level);
-      _entranceController.forward();
-    });
+    _load(widget.levelNumber);
+  }
+
+  void _load(int number) {
+    _game = GameController(LevelGenerator.generate(number));
+    _revived = false;
+    _zoom.value = Matrix4.identity();
   }
 
   @override
   void dispose() {
-    _entranceController.dispose();
+    _game.dispose();
+    _zoom.dispose();
     super.dispose();
+  }
+
+  void _onMove(MoveResult result) {
+    if (result is Escaped) {
+      AudioService().playSlideOff();
+      HapticService().lightTap();
+    } else {
+      AudioService().playBlockedTap();
+      HapticService().blockedMove();
+    }
+    if (_game.status == GameStatus.won) {
+      ref.read(progressProvider.notifier).completeLevel(_game.level.number);
+    }
+  }
+
+  void _onSettled() {
+    if (!mounted || _dialogOpen) return;
+    switch (_game.status) {
+      case GameStatus.won:
+        AudioService().playLevelComplete();
+        HapticService().levelComplete();
+        _showResult(won: true);
+      case GameStatus.lost:
+        _showResult(won: false);
+      case GameStatus.playing:
+        break;
+    }
+  }
+
+  Future<void> _showResult({required bool won}) async {
+    _dialogOpen = true;
+    final action = await showGeneralDialog<_ResultAction>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (_, __, ___) => _ResultCard(
+        won: won,
+        level: _game.level.number,
+        mistakes: _game.mistakes,
+        canRevive: !won && !_revived,
+      ),
+      transitionBuilder: (_, animation, __, child) => ScaleTransition(
+        scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+        child: FadeTransition(opacity: animation, child: child),
+      ),
+    );
+    _dialogOpen = false;
+    if (!mounted) return;
+    switch (action) {
+      case _ResultAction.next:
+        setState(() {
+          final old = _game;
+          _load(old.level.number + 1);
+          old.dispose();
+        });
+      case _ResultAction.retry:
+        setState(() {
+          _game.restart();
+          _revived = false;
+          _zoom.value = Matrix4.identity();
+        });
+      case _ResultAction.revive:
+        setState(() {
+          _revived = true;
+          _game.revive();
+        });
+      case _ResultAction.home:
+      case null:
+        Navigator.of(context).pop();
+    }
+  }
+
+  void _hint() {
+    final arrow = _game.hint();
+    AudioService().playUITap();
+    if (arrow == null) return;
+    HapticService().lightTap();
+  }
+
+  void _restart() {
+    setState(() {
+      _game.restart();
+      _revived = false;
+      _zoom.value = Matrix4.identity();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final game = ref.watch(gameProvider);
-    final scheme = Theme.of(context).colorScheme;
-    if (game == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final palette = dark ? BoardPalette.dark : BoardPalette.light;
 
-    final progress = 1 - game.getRemainingArrows() / game.getTotalArrows();
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _showExitDialog();
-      },
-      child: Scaffold(
-        body: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFEAF3FF),
-                Color(0xFFF8FAFD),
-              ],
-            ),
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                _TopBar(
-                  level: widget.level,
-                  onBack: _showExitDialog,
-                  onSettings: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _StatPill(
-                              icon: Icons.north_east_rounded,
-                              label: 'LEFT',
-                              value: '${game.getRemainingArrows()}',
-                              color: const Color(0xFF2E90FF),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _StatPill(
-                              icon: Icons.touch_app_rounded,
-                              label: 'MOVES',
-                              value: '${game.moveCount}',
-                              color: const Color(0xFF0F1B4C),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _StatPill(
-                              icon: Icons.bolt_rounded,
-                              label: 'BLOCKED',
-                              value: '${game.blockedTapCount}',
-                              color: game.blockedTapCount == 0
-                                  ? Colors.green
-                                  : scheme.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Text(
-                            'CLEAR THE BOARD',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.2,
-                                ),
-                          ),
-                          const Spacer(),
-                          Text('${(progress * 100).round()}%'),
-                        ],
-                      ),
-                      const SizedBox(height: 7),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(end: progress),
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeOutCubic,
-                          builder: (_, value, __) => LinearProgressIndicator(
-                            value: value,
-                            minHeight: 8,
-                            color: const Color(0xFF2E90FF),
-                            backgroundColor: const Color(0xFFDCE9F8),
+    return Scaffold(
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: _game,
+          builder: (context, _) => Column(
+            children: [
+              _TopBar(
+                level: _game.level.number,
+                onBack: () => Navigator.of(context).pop(),
+                onRestart: _restart,
+              ),
+              const SizedBox(height: 4),
+              HeartsBar(lives: _game.lives, maxLives: GameController.maxLives),
+              const SizedBox(height: 12),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final level = _game.level;
+                    const pad = 16.0;
+                    final cell = [
+                      (constraints.maxWidth - pad * 2) / level.cols,
+                      (constraints.maxHeight - pad * 2) / level.rows,
+                      56.0,
+                    ].reduce((a, b) => a < b ? a : b);
+                    return InteractiveViewer(
+                      transformationController: _zoom,
+                      minScale: 1,
+                      maxScale: 4,
+                      boundaryMargin: const EdgeInsets.all(120),
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                        child: Center(
+                          child: ArrowBoardView(
+                            key: ValueKey(level.number),
+                            controller: _game,
+                            cellSize: cell,
+                            palette: palette,
+                            onMove: _onMove,
+                            onSettled: _onSettled,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: FadeTransition(
-                    opacity: _fade,
-                    child: ScaleTransition(
-                      scale: _scale,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(36),
-                          border: Border.all(
-                            color: ArrowPalette.border,
-                            width: 1,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x14000000),
-                              blurRadius: 8,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ArrowBoardWidget(
-                          level: widget.level,
-                          onGameWon: () {
-                            final completed = ref.read(gameProvider);
-                            if (completed != null) {
-                              _showCompleteDialog(completed);
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                _Controls(
-                  canUndo: game.undoHistory.isNotEmpty,
-                  onUndo: () {
-                    ref.read(gameProvider.notifier).undo();
-                    _audio.playUITap();
-                  },
-                  onReset: () {
-                    ref.read(gameProvider.notifier).reset();
-                    _audio.playUITap();
-                    _entranceController.forward(from: 0);
-                  },
-                  onHint: () {
-                    ref.read(gameProvider.notifier).getHint();
-                    _audio.playUITap();
+                    );
                   },
                 ),
-              ],
-            ),
+              ),
+              _BottomBar(
+                remaining: _game.remainingArrows,
+                total: _game.totalArrows,
+                onHint: _hint,
+              ),
+            ],
           ),
         ),
       ),
     );
-  }
-
-  void _showExitDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.pause_circle_outline_rounded, size: 42),
-        title: const Text('Pause puzzle?'),
-        content: const Text('You can restart this level whenever you return.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Keep playing'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(gameProvider.notifier).endGame();
-              Navigator.pop(dialogContext);
-              Navigator.pop(context);
-            },
-            child: const Text('Exit'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showCompleteDialog(GameState game) async {
-    final stars = game.blockedTapCount == 0
-        ? 3
-        : game.blockedTapCount <= 2
-            ? 2
-            : 1;
-    final confetti = ConfettiController(duration: const Duration(seconds: 2));
-    confetti.play();
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Stack(
-        alignment: Alignment.topCenter,
-        children: [
-          Dialog(
-            insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 700),
-                    curve: Curves.elasticOut,
-                    builder: (_, value, child) => Transform.scale(
-                      scale: value,
-                      child: child,
-                    ),
-                    child: const CircleAvatar(
-                      radius: 35,
-                      child: Icon(Icons.check_rounded, size: 42),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text('Level cleared!',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                              )),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      3,
-                      (i) => TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: 1),
-                        duration: Duration(milliseconds: 450 + i * 160),
-                        curve: Curves.elasticOut,
-                        builder: (_, value, child) => Transform.scale(
-                          scale: value,
-                          child: child,
-                        ),
-                        child: Icon(
-                          i < stars
-                              ? Icons.star_rounded
-                              : Icons.star_outline_rounded,
-                          size: 48,
-                          color: i < stars ? Colors.amber : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                      '${game.moveCount} moves  •  ${game.blockedTapCount} blocked'),
-                  const SizedBox(height: 22),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(dialogContext);
-                            ref.read(gameProvider.notifier).reset();
-                            _entranceController.forward(from: 0);
-                          },
-                          icon: const Icon(Icons.replay_rounded),
-                          label: const Text('Replay'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => _openNext(game, dialogContext),
-                          icon: const Icon(Icons.arrow_forward_rounded),
-                          label: const Text('Next'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          ConfettiWidget(
-            confettiController: confetti,
-            blastDirectionality: BlastDirectionality.explosive,
-            emissionFrequency: .04,
-            numberOfParticles: 18,
-            gravity: .18,
-          ),
-        ],
-      ),
-    );
-    confetti.dispose();
-  }
-
-  Future<void> _openNext(GameState game, BuildContext dialogContext) async {
-    await ref.read(progressProvider.notifier).saveLevelProgress(
-          widget.level.id,
-          game.moveCount,
-          game.blockedTapCount,
-        );
-    final next = await LevelRepository().getNextLevel(widget.level);
-    ref.read(gameProvider.notifier).endGame();
-    if (!mounted || !dialogContext.mounted) return;
-    Navigator.pop(dialogContext);
-    if (next == null) {
-      Navigator.pop(context);
-    } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => GameScreen(level: next)),
-      );
-    }
   }
 }
 
 class _TopBar extends StatelessWidget {
-  final Level level;
-  final VoidCallback onBack;
-  final VoidCallback onSettings;
-
   const _TopBar({
     required this.level,
     required this.onBack,
-    required this.onSettings,
+    required this.onRestart,
   });
 
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-        child: Row(
-          children: [
-            IconButton.filledTonal(
-              onPressed: onBack,
-              style: IconButton.styleFrom(
-                foregroundColor: const Color(0xFF0F1B4C),
-                backgroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-            ),
-            Expanded(
-              child: Column(
-                children: [
-                  Text('LEVEL ${level.id}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: .8,
-                          )),
-                  Text(level.pack,
-                      style: Theme.of(context).textTheme.labelMedium),
-                ],
-              ),
-            ),
-            IconButton.filledTonal(
-              onPressed: onSettings,
-              style: IconButton.styleFrom(
-                foregroundColor: const Color(0xFF0F1B4C),
-                backgroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.tune_rounded),
-            ),
-          ],
-        ),
-      );
-}
-
-class _StatPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _StatPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
+  final int level;
+  final VoidCallback onBack;
+  final VoidCallback onRestart;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF0F1B4C).withValues(alpha: .06),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Row(
+        children: [
+          _RoundIconButton(icon: Icons.arrow_back_rounded, onTap: onBack),
+          Expanded(
+            child: Text(
+              'Level $level',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: .3,
+              ),
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 7),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                        )),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) => ScaleTransition(
-                    scale: animation,
-                    child: child,
-                  ),
-                  child: Text(value,
-                      key: ValueKey(value),
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      )),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+          _RoundIconButton(icon: Icons.refresh_rounded, onTap: onRestart),
+        ],
+      ),
+    );
+  }
 }
 
-class _Controls extends StatelessWidget {
-  final bool canUndo;
-  final VoidCallback onUndo;
-  final VoidCallback onReset;
-  final VoidCallback onHint;
-
-  const _Controls({
-    required this.canUndo,
-    required this.onUndo,
-    required this.onReset,
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.remaining,
+    required this.total,
     required this.onHint,
   });
 
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _ControlButton(
-              icon: Icons.undo_rounded,
-              label: 'Undo',
-              onTap: canUndo ? onUndo : null,
-            ),
-            _ControlButton(
-              icon: Icons.refresh_rounded,
-              label: 'Reset',
-              onTap: onReset,
-            ),
-            _ControlButton(
-              icon: Icons.lightbulb_rounded,
-              label: 'Hint',
-              highlighted: true,
-              onTap: onHint,
-            ),
-          ],
-        ),
-      );
-}
-
-class _ControlButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool highlighted;
-
-  const _ControlButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.highlighted = false,
-  });
+  final int remaining;
+  final int total;
+  final VoidCallback onHint;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: AnimatedOpacity(
-          opacity: onTap == null ? .35 : 1,
-          duration: const Duration(milliseconds: 180),
-          child: Container(
-            width: 88,
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            decoration: BoxDecoration(
-              color: highlighted ? const Color(0xFF2E90FF) : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: highlighted
-                    ? const Color(0xFF2E90FF)
-                    : const Color(0xFF0F1B4C).withValues(alpha: .08),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  color: highlighted ? Colors.white : const Color(0xFF0F1B4C),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: highlighted ? Colors.white : const Color(0xFF0F1B4C),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: .55);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+      child: Row(
+        children: [
+          Icon(Icons.north_east_rounded, size: 18, color: muted),
+          const SizedBox(width: 6),
+          Text(
+            '$remaining / $total',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: muted,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          const Spacer(),
+          FilledButton.icon(
+            onPressed: onHint,
+            icon: const Icon(Icons.lightbulb_rounded),
+            label: const Text('Hint'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFFC53D),
+              foregroundColor: const Color(0xFF3A2A00),
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: .7),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, size: 24),
         ),
-      );
+      ),
+    );
+  }
+}
+
+enum _ResultAction { next, retry, revive, home }
+
+class _ResultCard extends StatelessWidget {
+  const _ResultCard({
+    required this.won,
+    required this.level,
+    required this.mistakes,
+    required this.canRevive,
+  });
+
+  final bool won;
+  final int level;
+  final int mistakes;
+  final bool canRevive;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = won ? const Color(0xFF22C55E) : const Color(0xFFF03E5A);
+    return Center(
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 36,
+                backgroundColor: accent.withValues(alpha: .14),
+                child: Icon(
+                  won ? Icons.check_rounded : Icons.heart_broken_rounded,
+                  size: 44,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                won ? 'Level Complete!' : 'Out of lives',
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                won
+                    ? (mistakes == 0
+                        ? 'Flawless! Level $level cleared.'
+                        : 'Level $level cleared.')
+                    : 'An arrow crashed one time too many.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: .7),
+                ),
+              ),
+              const SizedBox(height: 22),
+              if (won)
+                _WideButton(
+                  label: 'Next Level',
+                  color: accent,
+                  onTap: () => Navigator.pop(context, _ResultAction.next),
+                )
+              else ...[
+                _WideButton(
+                  label: 'Try Again',
+                  color: const Color(0xFF2E90FF),
+                  onTap: () => Navigator.pop(context, _ResultAction.retry),
+                ),
+                if (canRevive) ...[
+                  const SizedBox(height: 10),
+                  _WideButton(
+                    label: 'Continue  +1 ♥',
+                    color: accent,
+                    onTap: () => Navigator.pop(context, _ResultAction.revive),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.pop(context, _ResultAction.home),
+                child: const Text('Home'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WideButton extends StatelessWidget {
+  const _WideButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: onTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        child: Text(label),
+      ),
+    );
+  }
 }
