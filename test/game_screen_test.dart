@@ -105,9 +105,8 @@ Future<void> _tapArrow(WidgetTester tester, ArrowPath arrow) async {
   final finder = find.byType(ArrowBoardView);
   final cell = tester.widget<ArrowBoardView>(finder).cellSize;
   final origin = tester.getTopLeft(finder);
-  await tester.tapAt(
-    origin + Offset((arrow.head.col + .5) * cell, (arrow.head.row + .5) * cell),
-  );
+  final p = _game(tester).level.shape.center(arrow.head);
+  await tester.tapAt(origin + Offset(p.x, p.y) * cell);
   await tester.pump(const Duration(milliseconds: 16));
 }
 

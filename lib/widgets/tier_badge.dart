@@ -49,3 +49,38 @@ class TierBadge extends StatelessWidget {
     );
   }
 }
+
+/// "3D CUBE" pill for levels played on the faces of a cube.
+class CubeBadge extends StatelessWidget {
+  const CubeBadge({super.key});
+
+  static const color = Color(0xFF7C4DFF);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.view_in_ar_rounded, size: 14, color: Colors.white),
+          SizedBox(width: 4),
+          Text(
+            '3D CUBE',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

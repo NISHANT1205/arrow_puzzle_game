@@ -4,12 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/home_screen.dart';
 import 'services/audio_service.dart';
 import 'services/haptic_service.dart';
+import 'services/level_repository.dart';
 import 'services/local_storage_service.dart';
 import 'state/settings_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocalStorageService().init();
+  try {
+    await LevelRepository.instance.preload();
+  } catch (_) {
+    // The game screen loads (and reports) levels on demand.
+  }
   runApp(const ProviderScope(child: ArrowPuzzleApp()));
 }
 

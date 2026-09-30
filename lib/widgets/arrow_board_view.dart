@@ -5,6 +5,9 @@
 //  * escape  – the arrow slithers along its own body and out of the board;
 //  * blocked – the arrow creeps forward until its head bumps the arrow in the
 //              way, flashes red and snaps back.
+//
+// Positions come from the level's BoardShape, so the same code draws flat
+// boards and 3D cubes (whose lanes bend over the cube's edges).
 
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
@@ -12,6 +15,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../engine/board_shape.dart';
 import '../engine/puzzle_board.dart';
 import '../models/arrow_path.dart';
 import '../state/game_controller.dart';
@@ -23,6 +27,8 @@ class BoardPalette {
     required this.dot,
     required this.hint,
     required this.error,
+    required this.faces,
+    required this.faceEdge,
   });
 
   final Color arrow;
@@ -30,18 +36,26 @@ class BoardPalette {
   final Color hint;
   final Color error;
 
+  /// Cube face shading: top, left, right (lightest to darkest).
+  final List<Color> faces;
+  final Color faceEdge;
+
   static const light = BoardPalette(
     arrow: Color(0xFF1C1F33),
-    dot: Color(0xFFC9CCD8),
+    dot: Color(0xFFB9BECE),
     hint: Color(0xFF2E90FF),
     error: Color(0xFFF03E5A),
+    faces: [Color(0xFFF3F5FB), Color(0xFFE3E7F2), Color(0xFFD3D9E8)],
+    faceEdge: Color(0xFFB3BACD),
   );
 
   static const dark = BoardPalette(
     arrow: Color(0xFFEDEFF7),
-    dot: Color(0xFF3D4257),
+    dot: Color(0xFF4A5068),
     hint: Color(0xFF4DA3FF),
     error: Color(0xFFFF5470),
+    faces: [Color(0xFF262B42), Color(0xFF1E2236), Color(0xFF171A2B)],
+    faceEdge: Color(0xFF3A4060),
   );
 }
 
@@ -76,7 +90,8 @@ class _Motion {
     required this.distance,
     required this.duration,
     required this.startedAt,
-  }) : track = buildTrack(arrow, distance.ceil() + 1);
+    required BoardShape shape,
+  }) : track = buildTrack(shape, arrow, distance.ceil() + 1);
 
   final ArrowPath arrow;
   final bool escape;
@@ -191,6 +206,7 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
           milliseconds: (180 + distance * 28).clamp(260, 900).round(),
         ),
         startedAt: _now,
+        shape: controller.level.shape,
       );
     } else if (result is Blocked) {
       // Stop with the arrow tip just touching the blocker's line.
@@ -203,6 +219,7 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
           milliseconds: (260 + distance * 70).clamp(300, 900).round(),
         ),
         startedAt: _now,
+        shape: controller.level.shape,
       );
       _flashUntil[arrow.id] = _now + _motions[arrow.id]!.duration + _flash;
     }
@@ -212,26 +229,20 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
   /// Arrow under [position], or the nearest one within reach of a finger.
   ArrowPath? _hitTest(Offset position) {
     final cell = widget.cellSize;
-    final col = (position.dx / cell).floor();
-    final row = (position.dy / cell).floor();
-    final direct = widget.controller.arrowAt(Cell(row, col));
-    if (direct != null) return direct;
-
+    final shape = widget.controller.level.shape;
     ArrowPath? best;
     var bestDistance = double.infinity;
-    for (var r = row - 1; r <= row + 1; r++) {
-      for (var c = col - 1; c <= col + 1; c++) {
-        final arrow = widget.controller.arrowAt(Cell(r, c));
-        if (arrow == null) continue;
-        final centre = Offset((c + .5) * cell, (r + .5) * cell);
-        final d = (centre - position).distance;
+    for (final arrow in widget.controller.board.arrows) {
+      for (final c in arrow.cells) {
+        final p = shape.center(c);
+        final d = (Offset(p.x, p.y) * cell - position).distance;
         if (d < bestDistance) {
           bestDistance = d;
           best = arrow;
         }
       }
     }
-    return bestDistance <= cell * .85 ? best : null;
+    return bestDistance <= cell * .75 ? best : null;
   }
 
   // -------------------------------------------------------------- drawing
@@ -262,7 +273,15 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
             : Curves.easeInOutCubic.transform((1 - t) * 2) * motion.distance;
         strokes.add(_Stroke(motion.track, arrow.length, shift, color, 1));
       } else {
-        strokes.add(_Stroke(buildTrack(arrow, 0), arrow.length, 0, color, 1));
+        strokes.add(
+          _Stroke(
+            buildTrack(controller.level.shape, arrow, 0),
+            arrow.length,
+            0,
+            color,
+            1,
+          ),
+        );
       }
     }
 
@@ -284,10 +303,9 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    final size = Size(
-      controller.level.cols * widget.cellSize,
-      controller.level.rows * widget.cellSize,
-    );
+    final shape = controller.level.shape;
+    final (w, h) = shape.extent;
+    final size = Size(w * widget.cellSize, h * widget.cellSize);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapUp: _handleTap,
@@ -296,10 +314,9 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
         builder: (context, _) => CustomPaint(
           size: size,
           painter: _BoardPainter(
-            rows: controller.level.rows,
-            cols: controller.level.cols,
+            shape: shape,
             cellSize: widget.cellSize,
-            dotColor: widget.palette.dot,
+            palette: widget.palette,
             strokes: _strokes(),
           ),
         ),
@@ -308,16 +325,39 @@ class _ArrowBoardViewState extends State<ArrowBoardView>
   }
 }
 
-/// The route an arrow follows, in cell units (cell centres): its body from
-/// tail to head, then [extra] more cells straight ahead.
-List<Offset> buildTrack(ArrowPath arrow, int extra) {
-  final dir = arrow.direction;
-  return [
-    for (final c in arrow.cells) Offset(c.col + .5, c.row + .5),
-    for (var i = 1; i <= extra; i++)
-      Offset(arrow.head.col + .5 + dir.dCol * i,
-          arrow.head.row + .5 + dir.dRow * i),
-  ];
+/// The route an arrow follows, in cell units, with a point every half cell:
+/// its body from tail to head, then [extra] more cells straight ahead. On a
+/// cube the lane bends over the cube's edge; past the edge of the board the
+/// route carries on in a straight line.
+List<Offset> buildTrack(BoardShape shape, ArrowPath arrow, int extra) {
+  Offset o(Pt p) => Offset(p.x, p.y);
+  final points = [o(shape.center(arrow.cells.first))];
+  for (var i = 1; i < arrow.cells.length; i++) {
+    final prev = arrow.cells[i - 1];
+    final cur = arrow.cells[i];
+    points
+      ..add(o(shape.edgePoint(prev, Dir.between(prev, cur))))
+      ..add(o(shape.center(cur)));
+  }
+  var cell = arrow.head;
+  var dir = arrow.direction;
+  var steps = 0;
+  while (steps < extra) {
+    points.add(o(shape.edgePoint(cell, dir)));
+    final next = shape.ahead(cell, dir);
+    if (next == null) break;
+    (cell, dir) = next;
+    points.add(o(shape.center(cell)));
+    steps++;
+  }
+  if (steps < extra) {
+    final last = points.last - points[points.length - 2];
+    final step = last / last.distance * .5;
+    for (var i = 0; i < (extra - steps) * 2 + 2; i++) {
+      points.add(points.last + step);
+    }
+  }
+  return points;
 }
 
 class _Stroke {
@@ -332,31 +372,44 @@ class _Stroke {
 
 class _BoardPainter extends CustomPainter {
   _BoardPainter({
-    required this.rows,
-    required this.cols,
+    required this.shape,
     required this.cellSize,
-    required this.dotColor,
+    required this.palette,
     required this.strokes,
   });
 
-  final int rows;
-  final int cols;
+  final BoardShape shape;
   final double cellSize;
-  final Color dotColor;
+  final BoardPalette palette;
   final List<_Stroke> strokes;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final dotPaint = Paint()..color = dotColor;
-    final dotRadius = math.max(1.2, cellSize * .055);
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        canvas.drawCircle(
-          Offset((c + .5) * cellSize, (r + .5) * cellSize),
-          dotRadius,
-          dotPaint,
+    // Cube faces, shaded so the box reads as 3D.
+    final faces = shape.faces;
+    for (var i = 0; i < faces.length; i++) {
+      final path = Path()
+        ..addPolygon(
+          [for (final p in faces[i]) Offset(p.x, p.y) * cellSize],
+          true,
         );
-      }
+      canvas
+        ..drawPath(path, Paint()..color = palette.faces[i])
+        ..drawPath(
+          path,
+          Paint()
+            ..color = palette.faceEdge
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1, cellSize * .04)
+            ..strokeJoin = StrokeJoin.round,
+        );
+    }
+
+    final dotPaint = Paint()..color = palette.dot;
+    final dotRadius = math.max(1.2, cellSize * .055);
+    for (final c in shape.cells) {
+      final p = shape.center(c);
+      canvas.drawCircle(Offset(p.x, p.y) * cellSize, dotRadius, dotPaint);
     }
 
     for (final s in strokes) {
@@ -364,10 +417,12 @@ class _BoardPainter extends CustomPainter {
     }
   }
 
-  /// Point at arc length [d] along [track] (each segment is one cell long).
+  /// Point at arc length [d] cells along [track] (points are half a cell
+  /// apart).
   static Offset _at(List<Offset> track, double d) {
-    final i = d.floor().clamp(0, track.length - 2);
-    final f = (d - i).clamp(0.0, 1.0);
+    final h = d * 2;
+    final i = h.floor().clamp(0, track.length - 2);
+    final f = (h - i).clamp(0.0, 1.0);
     return Offset.lerp(track[i], track[i + 1], f)!;
   }
 
@@ -378,14 +433,17 @@ class _BoardPainter extends CustomPainter {
     final end = s.shift + (s.length - 1);
 
     final points = <Offset>[_at(track, start)];
-    for (var i = start.floor() + 1; i < end && i < track.length; i++) {
-      if (i > start) points.add(track[i]);
+    for (var i = (start * 2).floor() + 1;
+        i < end * 2 && i < track.length;
+        i++) {
+      points.add(track[i]);
     }
     final tip = _at(track, end);
     points.add(tip);
 
-    final segment = math.min((end - 1e-6).floor(), track.length - 2);
-    final axis = track[segment + 1] - track[segment];
+    final segment = math.min((end * 2 - 1e-6).floor(), track.length - 2);
+    final along = track[segment + 1] - track[segment];
+    final axis = along / along.distance;
 
     final px = [for (final p in points) p * cellSize];
     final stroke = math.max(2.0, cellSize * .11);

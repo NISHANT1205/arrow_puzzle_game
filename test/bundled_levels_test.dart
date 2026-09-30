@@ -4,6 +4,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:arrow_puzzle/engine/board_shape.dart';
 import 'package:arrow_puzzle/engine/puzzle_board.dart';
 import 'package:arrow_puzzle/models/level.dart';
 import 'package:arrow_puzzle/models/level_codec.dart';
@@ -36,9 +37,8 @@ void main() {
     }
   });
 
-  test('every level is harder than the one before, on a board as big', () {
+  test('every level is harder than the one before', () {
     BoardStats? previous;
-    Level? previousLevel;
     for (final level in levels) {
       final stats = _board(level).analyze();
       if (previous != null) {
@@ -47,11 +47,49 @@ void main() {
           greaterThan(previous.score),
           reason: 'level ${level.number} is not harder than the one before',
         );
-        expect(level.cols, greaterThanOrEqualTo(previousLevel!.cols));
-        expect(level.rows, greaterThanOrEqualTo(previousLevel.rows));
       }
       previous = stats;
-      previousLevel = level;
+    }
+  });
+
+  test('flat boards never shrink', () {
+    Level? previous;
+    for (final level in levels.where((l) => !l.isCube)) {
+      if (previous != null) {
+        expect(level.cols, greaterThanOrEqualTo(previous.cols));
+        expect(level.rows, greaterThanOrEqualTo(previous.rows));
+      }
+      previous = level;
+    }
+  });
+
+  test('3D cube levels appear from level 110, every 10 levels', () {
+    final cubes = [
+      for (final l in levels)
+        if (l.isCube) l.number
+    ];
+    expect(cubes.length, greaterThanOrEqualTo(10));
+    for (final n in cubes) {
+      expect(n, greaterThanOrEqualTo(110));
+      expect(n % 10, 0);
+    }
+    for (final l in levels.where((l) => l.isCube)) {
+      // Cube levels really use the cube: some lane runs over an edge.
+      final shape = l.shape as CubeShape;
+      final crossesEdge = l.arrows.any((a) {
+        final face = shape.faceOf(a.head);
+        return shape.lane(a.head, a.direction).any(
+              (c) => shape.faceOf(c) != face,
+            );
+      });
+      expect(crossesEdge, isTrue, reason: 'level ${l.number}');
+      // And some arrows start out blocked by an arrow on another face.
+      final board = PuzzleBoard.forLevel(l);
+      final crossFace = l.arrows.where((a) {
+        final r = board.evaluate(a);
+        return r is Blocked && shape.faceOf(r.hitCell) != shape.faceOf(a.head);
+      }).length;
+      expect(crossFace, greaterThanOrEqualTo(2), reason: 'level ${l.number}');
     }
   });
 
@@ -129,5 +167,4 @@ void main() {
   });
 }
 
-PuzzleBoard _board(Level level) =>
-    PuzzleBoard(rows: level.rows, cols: level.cols, arrows: level.arrows);
+PuzzleBoard _board(Level level) => PuzzleBoard.forLevel(level);

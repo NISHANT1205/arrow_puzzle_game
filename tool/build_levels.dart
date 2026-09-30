@@ -15,14 +15,20 @@
 // boards; the builder sorts the pool by score and hands out evenly spaced
 // boards that beat the previous level, staying in the lower part of the pool
 // so the next group still has harder boards to offer.
+//
+// A second pass turns every 10th level from 110 on into a 3D cube level
+// (see CubeShape) when a cube board scores between the level before and the
+// level after it, so the "always harder" rule still holds.
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:arrow_puzzle/engine/board_shape.dart';
 import 'package:arrow_puzzle/engine/level_generator.dart';
 import 'package:arrow_puzzle/engine/puzzle_board.dart';
 import 'package:arrow_puzzle/models/arrow_path.dart';
+import 'package:arrow_puzzle/models/level.dart';
 import 'package:arrow_puzzle/models/level_codec.dart';
 
 /// Each level must beat the previous score by at least this factor.
@@ -40,6 +46,8 @@ typedef Option = ({
 void main(List<String> args) {
   final count = args.isNotEmpty ? int.parse(args[0]) : 300;
   final levels = <Map<String, dynamic>>[];
+  final scores = <double>[];
+  var cubes = 0;
   var previousScore = 0.0;
   final sw = Stopwatch()..start();
   if (count != LevelGenerator.scheduledLevels) {
@@ -82,32 +90,118 @@ void main(List<String> args) {
       final chosen = picked[k];
       final level = LevelGenerator.toLevel(n, chosen.config, chosen.arrows);
       // Re-check the shipped form of the level from scratch.
-      final check =
-          PuzzleBoard(rows: level.rows, cols: level.cols, arrows: level.arrows)
-              .analyze();
+      final check = PuzzleBoard.forLevel(level).analyze();
       if (!check.solvable) throw StateError('level $n is not solvable');
       if (check.score < previousScore * minStep) {
         throw StateError('level $n is not harder than level ${n - 1}');
       }
-      levels.add({
-        ...LevelCodec.encodeLevel(level),
-        's': {
-          'arrows': check.arrows,
-          'free': check.initialFree,
-          'layers': check.layers,
-          'score': double.parse(check.score.toStringAsFixed(2)),
-        },
-      });
+      levels.add(_entry(level, check));
+      scores.add(check.score);
       previousScore = check.score;
-      print('level $n ${level.cols}x${level.rows} $check');
     }
   }
+
+  // Second pass: turn every 10th level from 110 on into a 3D cube level,
+  // when a cube fits between its neighbours' scores (harder than the level
+  // before, easier than the level after).
+  final cubePools = <String, List<Option>>{};
+  for (var n = firstCubeLevel; n <= count; n += 10) {
+    final low = scores[n - 2] * minStep;
+    final high = n == count ? double.infinity : scores[n] / minStep;
+    final d = LevelGenerator.difficultyForLevel(n);
+    Option? best;
+    for (var size = minCube; size <= maxCube; size++) {
+      final key = '$size@${(d * 10).round()}';
+      final pool = cubePools[key] ??= _cubePool(size, d);
+      for (final option in pool) {
+        final score = option.stats.score;
+        if (score < low || score > high) continue;
+        // Prefer the smallest cube that fits: bigger cells, easier to read
+        // on a phone.
+        if (best == null ||
+            option.config.cols < best.config.cols ||
+            (option.config.cols == best.config.cols &&
+                score < best.stats.score)) {
+          best = option;
+        }
+      }
+    }
+    if (best == null) {
+      print('level $n: no cube fits, stays flat');
+      continue;
+    }
+    // Don't hand the same board out twice.
+    for (final pool in cubePools.values) {
+      pool.remove(best);
+    }
+    final level = LevelGenerator.toLevel(n, best.config, best.arrows);
+    final check = PuzzleBoard.forLevel(level).analyze();
+    if (!check.solvable || check.score < low || check.score > high) {
+      throw StateError('cube level $n does not fit');
+    }
+    levels[n - 1] = _entry(level, check);
+    scores[n - 1] = check.score;
+    cubes++;
+  }
+
+  for (var i = 0; i < levels.length; i++) {
+    final l = levels[i];
+    final shape = l['shape'] == null ? '' : ' CUBE';
+    print('level ${i + 1} ${l['c']}x${l['r']}$shape ${l['s']}');
+  }
+  print('$cubes cube levels');
 
   final file = File('assets/levels/levels.json');
   file.writeAsStringSync(jsonEncode({'version': 1, 'levels': levels}));
   print('wrote ${levels.length} levels to ${file.path} '
       '(${(file.lengthSync() / 1024).round()} KB) in ${sw.elapsed.inSeconds}s');
 }
+
+/// Cube levels: every 10th level from here, cubes of these sizes.
+const int firstCubeLevel = 110;
+const int minCube = 6;
+const int maxCube = 16;
+const int minCrossFace = 2;
+
+/// A pool of cube boards of edge [size] at difficulty [d]. Only boards
+/// where at the start at least [minCrossFace] arrows are blocked by an arrow
+/// on another face are kept, so the 3D rule matters.
+List<Option> _cubePool(int size, double d) {
+  final config = LevelGenerator.cubeConfig(size, d);
+  final shape = config.shape as CubeShape;
+  final pool = <Option>[];
+  for (var i = 0; i < 120; i++) {
+    final arrows = LevelGenerator.build(
+      config,
+      size * 7000003 + (d * 1000).round() * 31 + i * 7919,
+    );
+    final stats = LevelGenerator.difficultyOf(config, arrows);
+    if (!stats.solvable) throw StateError('cube $size board $i stuck');
+    final board = PuzzleBoard(
+      rows: config.rows,
+      cols: config.cols,
+      arrows: arrows,
+      shape: shape,
+    );
+    final crossFace = arrows.where((a) {
+      final r = board.evaluate(a);
+      return r is Blocked && shape.faceOf(r.hitCell) != shape.faceOf(a.head);
+    }).length;
+    if (crossFace < minCrossFace) continue;
+    pool.add((config: config, arrows: arrows, stats: stats));
+  }
+  return pool;
+}
+
+Map<String, dynamic> _entry(Level level, BoardStats check) => {
+      ...LevelCodec.encodeLevel(level),
+      's': {
+        'arrows': check.arrows,
+        'free': check.initialFree,
+        'layers': check.layers,
+        'score': double.parse(check.score.toStringAsFixed(2)),
+      },
+    };
 
 /// Builds [poolTries] boards for [config] and picks [wanted] of them in
 /// strictly rising score, all harder than [previousScore]. Returns null when

@@ -14,6 +14,7 @@ import 'dart:math';
 
 import '../models/arrow_path.dart';
 import '../models/level.dart';
+import 'board_shape.dart';
 import 'puzzle_board.dart';
 
 /// Difficulty badge shown on a level. Levels only ever get harder, so the
@@ -46,7 +47,14 @@ class LevelConfig {
     required this.fillHoles,
     this.blockLanes = 0,
     this.minLane = 0,
-  });
+    this.seamBias = 0,
+    BoardShape? shape,
+  }) : _shape = shape;
+
+  final BoardShape? _shape;
+
+  /// The surface to build on: a [rows] x [cols] rectangle unless given.
+  BoardShape get shape => _shape ?? RectShape(rows, cols);
 
   final int rows;
   final int cols;
@@ -81,6 +89,11 @@ class LevelConfig {
   /// edge pointing straight out can never be trapped, so hard levels ask
   /// for room in front where other arrows can sit.
   final int minLane;
+
+  /// Cube levels: probability that a new arrow sits right at a cube edge
+  /// pointing over it, so its lane runs onto another face and arrows there
+  /// can block it.
+  final double seamBias;
 }
 
 class LevelGenerator {
@@ -142,6 +155,26 @@ class LevelGenerator {
     );
   }
 
+  /// Knobs for a 3D cube level: an [n] x [n] x [n] cube at difficulty [d].
+  static LevelConfig cubeConfig(int n, double d) {
+    final flat = configAt(d, cols: n);
+    return LevelConfig(
+      rows: 3 * n,
+      cols: n,
+      minLength: 2,
+      // A face is only n cells wide, so arrows stay a little shorter.
+      maxLength: min(flat.maxLength, n + 4),
+      fill: flat.fill,
+      straightness: flat.straightness,
+      aimAcross: flat.aimAcross,
+      fillHoles: true,
+      blockLanes: flat.blockLanes,
+      minLane: min(flat.minLane, 2),
+      seamBias: .45,
+      shape: CubeShape(n),
+    );
+  }
+
   /// Knobs for level [number] on the schedule.
   static LevelConfig configForLevel(int number) => configAt(
         difficultyForLevel(number),
@@ -167,8 +200,12 @@ class LevelGenerator {
 
   /// Difficulty numbers for a set of arrows on [config]'s board.
   static BoardStats difficultyOf(LevelConfig config, List<ArrowPath> arrows) =>
-      PuzzleBoard(rows: config.rows, cols: config.cols, arrows: arrows)
-          .analyze();
+      PuzzleBoard(
+        rows: config.rows,
+        cols: config.cols,
+        arrows: arrows,
+        shape: config.shape,
+      ).analyze();
 
   /// Wraps [arrows] as a playable level, renumbered in a shuffled order so
   /// ids don't leak the solution.
@@ -178,6 +215,7 @@ class LevelGenerator {
       number: number,
       rows: config.rows,
       cols: config.cols,
+      shape: config.shape,
       arrows: [
         for (var i = 0; i < shuffled.length; i++)
           ArrowPath(id: i, cells: shuffled[i].cells),
@@ -191,9 +229,16 @@ class LevelGenerator {
 
   /// One candidate board, arrows in placement order.
   static List<ArrowPath> _build(LevelConfig config, Random rng) {
-    final board = PuzzleBoard(rows: config.rows, cols: config.cols, arrows: []);
+    final shape = config.shape;
+    final board = PuzzleBoard(
+      rows: config.rows,
+      cols: config.cols,
+      arrows: [],
+      shape: shape,
+    );
+    final allCells = shape.cells.toList();
     final arrows = <ArrowPath>[];
-    final totalCells = config.rows * config.cols;
+    final totalCells = allCells.length;
     final target = (totalCells * config.fill).round();
     var filled = 0;
 
@@ -209,8 +254,17 @@ class LevelGenerator {
       if (config.blockLanes > 0) laneHits = _freeLaneHits(board);
     }
 
-    Cell randomCell() =>
-        Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
+    Cell randomCell() => allCells[rng.nextInt(allCells.length)];
+
+    // Cells at a cube edge with the direction that goes over it.
+    final seamSpots = config.seamBias == 0
+        ? const <(Cell, Dir)>[]
+        : [
+            for (final c in allCells)
+              for (final d in Dir.values)
+                if (shape.bodyStep(c, d) == null && shape.ahead(c, d) != null)
+                  (c, d),
+          ];
 
     // Random placement.
     var failures = 0;
@@ -218,7 +272,12 @@ class LevelGenerator {
       // Early arrows (removed last) go deep inside the board; the outer
       // ring is left for the arrows that will leave first.
       var head = randomCell();
-      if (laneHits.isNotEmpty && rng.nextDouble() < config.blockLanes) {
+      Dir? seamDir;
+      if (seamSpots.isNotEmpty && rng.nextDouble() < config.seamBias) {
+        final spot = seamSpots[rng.nextInt(seamSpots.length)];
+        head = spot.$1;
+        seamDir = spot.$2;
+      } else if (laneHits.isNotEmpty && rng.nextDouble() < config.blockLanes) {
         // Trap a free arrow: sit in the lane cell that traps the most.
         final most = laneHits.values.reduce(max);
         final best = [
@@ -229,12 +288,13 @@ class LevelGenerator {
       } else if (filled < target * .5) {
         for (var i = 0; i < 3; i++) {
           final other = randomCell();
-          if (_depth(config, other) > _depth(config, head)) head = other;
+          if (shape.depth(other) > shape.depth(head)) head = other;
         }
       }
-      final dir = rng.nextDouble() < config.aimAcross
-          ? _longestLane(board, head) ?? Dir.values[rng.nextInt(4)]
-          : Dir.values[rng.nextInt(4)];
+      final dir = seamDir ??
+          (rng.nextDouble() < config.aimAcross
+              ? _longestLane(board, head) ?? Dir.values[rng.nextInt(4)]
+              : Dir.values[rng.nextInt(4)]);
       final cells = _grow(board, rng, config, head, dir, laneHits);
       if (cells == null) {
         failures++;
@@ -247,9 +307,8 @@ class LevelGenerator {
     // until the snake finds a direction it can escape in.
     for (var round = 0; round < 6 && filled < target; round++) {
       final empty = [
-        for (var r = 0; r < config.rows; r++)
-          for (var c = 0; c < config.cols; c++)
-            if (board.isEmpty(Cell(r, c))) Cell(r, c),
+        for (final c in allCells)
+          if (board.isEmpty(c)) c,
       ]..shuffle(rng);
       if (config.blockLanes > 0) {
         // Holes inside other arrows' lanes first: they make traps.
@@ -294,10 +353,8 @@ class LevelGenerator {
     final latestLane = <Cell, int>{};
     for (var k = 0; k < arrows.length; k++) {
       final a = arrows[k];
-      var c = a.head.step(a.direction);
-      while (board.inBounds(c)) {
+      for (final c in board.shape.lane(a.head, a.direction)) {
         latestLane[c] = k;
-        c = c.step(a.direction);
       }
     }
 
@@ -313,11 +370,11 @@ class LevelGenerator {
         final dirs = [...Dir.values]..shuffle(rng);
         if (trapFirst) {
           // Growing into a free arrow's lane traps it.
-          dirs.sort((x, y) =>
-              (hits[a.tail.step(y)] ?? 0).compareTo(hits[a.tail.step(x)] ?? 0));
+          dirs.sort((x, y) => (hits[_stepIn(board.shape, a.tail, y)] ?? 0)
+              .compareTo(hits[_stepIn(board.shape, a.tail, x)] ?? 0));
         }
         for (final d in dirs) {
-          final c = a.tail.step(d);
+          final c = _stepIn(board.shape, a.tail, d);
           if (!board.inBounds(c) || !board.isEmpty(c)) continue;
           if ((latestLane[c] ?? -1) >= k) continue;
           final grown = ArrowPath(id: a.id, cells: [c, ...a.cells]);
@@ -331,23 +388,18 @@ class LevelGenerator {
     }
   }
 
+  /// Body neighbour of [c] along [d]; a cell outside the board when there is
+  /// none, so callers can treat it like any unusable cell.
+  static Cell _stepIn(BoardShape shape, Cell c, Dir d) =>
+      shape.bodyStep(c, d) ?? const Cell(-1, -1);
+
   /// For every empty cell, the number of arrows that can escape right now
   /// whose escape lane runs through it.
   static Map<Cell, int> _freeLaneHits(PuzzleBoard board) {
     final hits = <Cell, int>{};
     for (final a in board.arrows) {
-      final lane = <Cell>[];
-      var c = a.head.step(a.direction);
-      var clear = true;
-      while (board.inBounds(c)) {
-        if (!board.isEmpty(c)) {
-          clear = false;
-          break;
-        }
-        lane.add(c);
-        c = c.step(a.direction);
-      }
-      if (!clear) continue;
+      final lane = board.shape.lane(a.head, a.direction).toList();
+      if (!lane.every(board.isEmpty)) continue;
       for (final cell in lane) {
         hits[cell] = (hits[cell] ?? 0) + 1;
       }
@@ -358,6 +410,7 @@ class LevelGenerator {
   /// Picks one of [options] (steps from [from]); with probability
   /// [LevelConfig.blockLanes] it prefers a step onto another arrow's lane.
   static Dir _preferLanes(
+    BoardShape shape,
     List<Dir> options,
     Cell from,
     Random rng,
@@ -367,7 +420,7 @@ class LevelGenerator {
     if (options.length > 1 && rng.nextDouble() < config.blockLanes) {
       final onLane = [
         for (final d in options)
-          if ((laneHits[from.step(d)] ?? 0) > 0) d,
+          if ((laneHits[_stepIn(shape, from, d)] ?? 0) > 0) d,
       ];
       if (onLane.isNotEmpty) return onLane[rng.nextInt(onLane.length)];
     }
@@ -388,11 +441,6 @@ class LevelGenerator {
     return best;
   }
 
-  static int _depth(LevelConfig config, Cell c) => min(
-        min(c.row, config.rows - 1 - c.row),
-        min(c.col, config.cols - 1 - c.col),
-      );
-
   /// Cells from [head] (exclusive) to the edge along [dir], or null if any of
   /// them is taken by the board or by [body].
   static List<Cell>? _clearLane(
@@ -402,11 +450,9 @@ class LevelGenerator {
     Set<Cell> body,
   ) {
     final lane = <Cell>[];
-    var c = head.step(dir);
-    while (board.inBounds(c)) {
+    for (final c in board.shape.lane(head, dir)) {
       if (!board.isEmpty(c) || body.contains(c)) return null;
       lane.add(c);
-      c = c.step(dir);
     }
     return lane;
   }
@@ -432,16 +478,16 @@ class LevelGenerator {
       final options = [
         for (final d in Dir.values)
           if (d != heading?.opposite &&
-              board.inBounds(path.last.step(d)) &&
-              board.isEmpty(path.last.step(d)) &&
-              !body.contains(path.last.step(d)))
+              board.inBounds(_stepIn(board.shape, path.last, d)) &&
+              board.isEmpty(_stepIn(board.shape, path.last, d)) &&
+              !body.contains(_stepIn(board.shape, path.last, d)))
             d,
       ];
       if (options.isEmpty) return null;
       // Take the step that exits right away when there is one.
       Dir? exit;
       for (final d in options..shuffle(rng)) {
-        final next = path.last.step(d);
+        final next = _stepIn(board.shape, path.last, d);
         if (path.length + 1 >= config.minLength &&
             (_clearLane(board, next, d, body)?.length ?? -1) >=
                 config.minLane) {
@@ -450,7 +496,7 @@ class LevelGenerator {
         }
       }
       if (exit != null && (path.length + 1 >= minExit || rng.nextBool())) {
-        path.add(path.last.step(exit));
+        path.add(_stepIn(board.shape, path.last, exit));
         return path;
       }
       final keep = heading != null &&
@@ -458,8 +504,9 @@ class LevelGenerator {
           rng.nextDouble() < config.straightness;
       heading = keep
           ? heading
-          : _preferLanes(options, path.last, rng, config, laneHits);
-      final next = path.last.step(heading);
+          : _preferLanes(
+              board.shape, options, path.last, rng, config, laneHits);
+      final next = _stepIn(board.shape, path.last, heading);
       path.add(next);
       body.add(next);
     }
@@ -480,11 +527,9 @@ class LevelGenerator {
 
     // The escape lane must be clear right now.
     final lane = <Cell>{};
-    var c = head.step(dir);
-    while (board.inBounds(c)) {
+    for (final c in board.shape.lane(head, dir)) {
       if (!board.isEmpty(c)) return null;
       lane.add(c);
-      c = c.step(dir);
     }
     if (lane.length < config.minLane) return null;
 
@@ -495,7 +540,7 @@ class LevelGenerator {
         !body.contains(cell);
 
     // The cell behind the head fixes the head's direction.
-    final neck = head.step(dir.opposite);
+    final neck = _stepIn(board.shape, head, dir.opposite);
     final body = <Cell>{head};
     if (!usable(neck, body)) return null;
 
@@ -507,18 +552,21 @@ class LevelGenerator {
     var heading = dir.opposite; // Direction we walk while growing backwards.
     while (path.length < wanted) {
       final options = <Dir>[];
-      final straight = path.last.step(heading);
+      final straight = _stepIn(board.shape, path.last, heading);
       if (usable(straight, body) && rng.nextDouble() < config.straightness) {
         options.add(heading);
       } else {
         for (final d in Dir.values) {
           if (d == heading.opposite) continue;
-          if (usable(path.last.step(d), body)) options.add(d);
+          if (usable(_stepIn(board.shape, path.last, d), body)) {
+            options.add(d);
+          }
         }
       }
       if (options.isEmpty) break;
-      heading = _preferLanes(options, path.last, rng, config, laneHits);
-      final next = path.last.step(heading);
+      heading =
+          _preferLanes(board.shape, options, path.last, rng, config, laneHits);
+      final next = _stepIn(board.shape, path.last, heading);
       path.add(next);
       body.add(next);
     }

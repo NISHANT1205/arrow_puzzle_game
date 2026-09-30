@@ -34,6 +34,19 @@ class LevelRepository {
   Future<List<Map<String, dynamic>>> _load() async =>
       _bundled ??= parse(await rootBundle.loadString(assetPath));
 
+  /// Loads the bundled levels ahead of time (call at startup).
+  Future<void> preload() => _load();
+
+  /// Whether bundled level [number] is a 3D cube level. False until the
+  /// levels are loaded.
+  bool isCube(int number) {
+    final bundled = _bundled;
+    if (bundled == null || number < 1 || number > bundled.length) {
+      return false;
+    }
+    return bundled[number - 1]['shape'] != null;
+  }
+
   Future<Level> level(int number) async {
     final bundled = await _load();
     if (number >= 1 && number <= bundled.length) {

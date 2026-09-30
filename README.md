@@ -71,6 +71,28 @@ are handed out.
 dart run tool/build_levels.dart 300   # rebuilds assets/levels/levels.json
 ```
 
+### 3D cube levels
+
+From level 110, every 10th level can be a **3D CUBE** level. The board is
+the three visible faces of an isometric cube (top, left and right), shaded
+so it reads as a box.
+
+- Arrow bodies stay on one face.
+- Escape lanes run **over the cube's edges onto the next face**, and an
+  arrow only leaves at the cube's outline. So an arrow on the top face can
+  be blocked by one on a side face.
+- `CubeShape` works this out in 3D: moving off a face along direction `d`
+  continues on the face whose normal is `d`, now heading into the cube
+  along minus the old face's normal. Directions that lead to the hidden
+  faces leave the board.
+- Cube boards are built by the same always-solvable generator. A seam bias
+  puts arrows at the cube edges pointing over them.
+- The builder keeps only cube boards where at least 2 arrows start out
+  blocked by an arrow on another face. It uses one only if it scores
+  between the level before and the level after, so the "always harder" rule
+  still holds. When no cube fits, the level stays flat.
+- It picks the smallest cube that fits, so cells stay big enough to read.
+
 ### Always solvable, never stuck
 
 Arrows are placed one at a time, and each new arrow's escape lane must be
@@ -112,6 +134,7 @@ lib/
     level.dart                  Level (rows, cols, arrows)
     level_codec.dart            Compact level file format
   engine/
+    board_shape.dart            Flat board and 3D cube: lanes, screen positions
     puzzle_board.dart           Rules: escape / blocked, solver
     level_generator.dart        Deterministic, always-solvable generator
   state/
@@ -126,7 +149,7 @@ lib/
   widgets/
     arrow_board_view.dart       Dot grid, arrow painter, tap + animations
     hearts_bar.dart
-    tier_badge.dart             HARD / SUPER HARD pill
+    tier_badge.dart             HARD / SUPER HARD and 3D CUBE pills
   services/
     level_repository.dart       Bundled levels, then endless ones
     ...                         Storage, system sounds, haptics

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/level_generator.dart';
+import '../services/level_repository.dart';
 import '../state/progress_provider.dart';
 import '../widgets/tier_badge.dart';
 
@@ -58,6 +59,16 @@ class LevelSelectScreen extends ConsumerWidget {
                     },
               child: Stack(
                 children: [
+                  if (LevelRepository.instance.isCube(level))
+                    const Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Icon(
+                        Icons.view_in_ar_rounded,
+                        size: 16,
+                        color: CubeBadge.color,
+                      ),
+                    ),
                   if (LevelTier.forLevel(level) != LevelTier.normal)
                     Positioned(
                       top: 6,

@@ -4,11 +4,14 @@
 //
 // Rule: tapping an arrow makes it slide forward along its own body and then
 // straight ahead in the direction its head points. It escapes if every cell
-// from the head to the edge of the board is empty. Otherwise it travels until
+// from the head to the edge of the board is empty. On a cube the way ahead
+// runs over the cube's edges onto the next face (see BoardShape). Otherwise it travels until
 // its head bumps into the first arrow in the way and snaps back — the tap is
 // a mistake and costs a life.
 
 import '../models/arrow_path.dart';
+import '../models/level.dart';
+import 'board_shape.dart';
 
 /// Outcome of checking (or performing) a tap.
 sealed class MoveResult {
@@ -37,14 +40,24 @@ class PuzzleBoard {
     required this.rows,
     required this.cols,
     required Iterable<ArrowPath> arrows,
-  }) {
+    BoardShape? shape,
+  }) : shape = shape ?? RectShape(rows, cols) {
     for (final a in arrows) {
       add(a);
     }
   }
 
+  PuzzleBoard.forLevel(Level level)
+      : this(
+          rows: level.rows,
+          cols: level.cols,
+          arrows: level.arrows,
+          shape: level.shape,
+        );
+
   final int rows;
   final int cols;
+  final BoardShape shape;
 
   final Map<int, ArrowPath> _arrows = {};
   final Map<Cell, int> _occupancy = {};
@@ -53,8 +66,7 @@ class PuzzleBoard {
   int get count => _arrows.length;
   bool get isCleared => _arrows.isEmpty;
 
-  bool inBounds(Cell c) =>
-      c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols;
+  bool inBounds(Cell c) => shape.contains(c);
 
   bool isEmpty(Cell c) => !_occupancy.containsKey(c);
 
@@ -70,6 +82,15 @@ class PuzzleBoard {
       if (!inBounds(c)) {
         throw ArgumentError('$arrow leaves the ${cols}x$rows board');
       }
+    }
+    for (var i = 1; i < arrow.cells.length; i++) {
+      final prev = arrow.cells[i - 1];
+      if (shape.bodyStep(prev, Dir.between(prev, arrow.cells[i])) !=
+          arrow.cells[i]) {
+        throw ArgumentError('$arrow crosses from one face to another');
+      }
+    }
+    for (final c in arrow.cells) {
       if (_occupancy.containsKey(c)) {
         throw ArgumentError('$arrow overlaps arrow #${_occupancy[c]} at $c');
       }
@@ -90,16 +111,13 @@ class PuzzleBoard {
 
   /// What would happen if [arrow] were tapped now. Does not change the board.
   MoveResult evaluate(ArrowPath arrow) {
-    final dir = arrow.direction;
-    var cell = arrow.head.step(dir);
     var steps = 0;
-    while (inBounds(cell)) {
+    for (final cell in shape.lane(arrow.head, arrow.direction)) {
       final other = _occupancy[cell];
       if (other != null) {
         return Blocked(arrow, steps, _arrows[other]!, cell);
       }
       steps++;
-      cell = cell.step(dir);
     }
     return Escaped(arrow, steps + 1);
   }
@@ -122,7 +140,8 @@ class PuzzleBoard {
 
   /// Measures how hard the board is. See [BoardStats].
   BoardStats analyze() {
-    final copy = PuzzleBoard(rows: rows, cols: cols, arrows: arrows);
+    final copy =
+        PuzzleBoard(rows: rows, cols: cols, arrows: arrows, shape: shape);
     final total = copy.count;
     final cells = copy._occupancy.length;
     final initialFree = copy.freeArrows().length;
@@ -160,7 +179,8 @@ class PuzzleBoard {
   /// arrow clears the board exactly when the puzzle is solvable. Returns a
   /// full clearing order, or null when the board is stuck.
   List<int>? solve() {
-    final copy = PuzzleBoard(rows: rows, cols: cols, arrows: arrows);
+    final copy =
+        PuzzleBoard(rows: rows, cols: cols, arrows: arrows, shape: shape);
     final order = <int>[];
     while (!copy.isCleared) {
       final free = copy.freeArrows();

@@ -5,8 +5,10 @@
 //
 //   "5,0:UUR"  = tail (5,0), then up, up, right -> head (3,1) pointing right
 //
-// A level is {"n": number, "r": rows, "c": cols, "a": [arrows...]}.
+// A level is {"n": number, "r": rows, "c": cols, "a": [arrows...]},
+// plus "shape": {"t": "cube", "n": size} for 3D cube levels.
 
+import '../engine/board_shape.dart';
 import 'arrow_path.dart';
 import 'level.dart';
 
@@ -49,14 +51,22 @@ class LevelCodec {
         'r': level.rows,
         'c': level.cols,
         'a': [for (final a in level.arrows) encodeArrow(a)],
+        if (level.isCube) 'shape': level.shape.toJson(),
       };
 
   static Level decodeLevel(Map<String, dynamic> json) {
     final arrows = json['a'] as List<dynamic>;
+    final rows = json['r'] as int;
+    final cols = json['c'] as int;
     return Level(
       number: json['n'] as int,
-      rows: json['r'] as int,
-      cols: json['c'] as int,
+      rows: rows,
+      cols: cols,
+      shape: BoardShape.fromJson(
+        json['shape'] as Map<String, dynamic>?,
+        rows,
+        cols,
+      ),
       arrows: [
         for (var i = 0; i < arrows.length; i++)
           decodeArrow(i, arrows[i] as String),

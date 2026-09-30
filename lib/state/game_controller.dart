@@ -37,8 +37,7 @@ class GameController extends ChangeNotifier {
       totalArrows == 0 ? 1 : (totalArrows - remainingArrows) / totalArrows;
 
   void _start() {
-    board =
-        PuzzleBoard(rows: level.rows, cols: level.cols, arrows: level.arrows);
+    board = PuzzleBoard.forLevel(level);
     lives = maxLives;
     moves = 0;
     mistakes = 0;

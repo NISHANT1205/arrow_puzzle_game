@@ -213,6 +213,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             children: [
               _TopBar(
                 level: _game.level.number,
+                isCube: _game.level.isCube,
                 onBack: () => Navigator.of(context).pop(),
                 onRestart: _restart,
               ),
@@ -223,10 +224,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final level = _game.level;
+                    final (boardW, boardH) = level.shape.extent;
                     const pad = 16.0;
                     final cell = [
-                      (constraints.maxWidth - pad * 2) / level.cols,
-                      (constraints.maxHeight - pad * 2) / level.rows,
+                      (constraints.maxWidth - pad * 2) / boardW,
+                      (constraints.maxHeight - pad * 2) / boardH,
                       56.0,
                     ].reduce((a, b) => a < b ? a : b);
                     return InteractiveViewer(
@@ -270,9 +272,11 @@ class _TopBar extends StatelessWidget {
     required this.level,
     required this.onBack,
     required this.onRestart,
+    this.isCube = false,
   });
 
   final int level;
+  final bool isCube;
   final VoidCallback onBack;
   final VoidCallback onRestart;
 
@@ -296,8 +300,16 @@ class _TopBar extends StatelessWidget {
                     letterSpacing: .3,
                   ),
                 ),
-                if (LevelTier.forLevel(level) != LevelTier.normal)
-                  TierBadge(tier: LevelTier.forLevel(level)),
+                // Wraps onto a second line when both badges don't fit.
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 6,
+                  children: [
+                    if (LevelTier.forLevel(level) != LevelTier.normal)
+                      TierBadge(tier: LevelTier.forLevel(level)),
+                    if (isCube) const CubeBadge(),
+                  ],
+                ),
               ],
             ),
           ),
