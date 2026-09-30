@@ -37,13 +37,35 @@ score = cells covered by arrows × (1 + 0.2 × layers) × (0.6 + trap ratio)
 - **layers**: the longest chain of "this arrow must go before that one".
 - **trap ratio**: the share of arrows that can't move at the start.
 
-`tool/build_levels.dart` builds the levels. For each level it makes 48 boards
-on the scheduled board size and keeps the one closest to a typical board of
-that size, as long as it scores higher than the previous level. If a size
-runs out of harder boards, the board grows; boards never shrink.
+### Difficulty schedule
 
-The result goes from a 4×6 tutorial to 22×30 mazes with 100+ arrows. The
-badge marks the stage: **HARD** from level 100, **SUPER HARD** from 200.
+The badge marks the stage: **HARD** from level 100, **SUPER HARD** from
+200.
+
+| Levels | Board | What happens |
+|---|---|---|
+| 1–100 | 4×6 → 11×15 | Learning curve: short arrows, no deliberate traps |
+| 100–200 | 12×17 → 21×29 | Steep climb: boards grow fast, arrows get longer, **traps** switch on and reach full strength |
+| 200–300 | 22×30 | Hardest knobs: full traps, long winding arrows, lanes of 3+ cells |
+
+**Traps** (`LevelConfig.blockLanes`): the generator keeps track of which
+arrows can currently escape and puts new arrows right in their escape
+lanes, so they can't leave until the new arrow is gone. It also won't place
+an arrow on the edge pointing straight out (`minLane`), because those could
+never be trapped.
+
+| Level | Board | Arrows | Chain | Score (before → now) |
+|---|---|---|---|---|
+| 100 | 11×15 | 35 | 8 | 327 → 495 |
+| 150 | 16×22 | 47 | 11 | 666 → 1283 |
+| 200 | 21×29 | 53 | 17 | 1107 → 2834 |
+| 250 | 22×30 | 69 | 17 | 1730 → 3419 |
+| 300 | 22×30 | 57 | 26 | 3007 → 4893 |
+
+`tool/build_levels.dart` builds the levels. Levels that share a board size
+share a pool of boards (160 per size, 640+ for the 22×30 levels). The pool
+is sorted by score, and evenly spaced boards that beat the previous level
+are handed out.
 
 ```bash
 dart run tool/build_levels.dart 300   # rebuilds assets/levels/levels.json

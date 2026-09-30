@@ -44,6 +44,8 @@ class LevelConfig {
     required this.straightness,
     required this.aimAcross,
     required this.fillHoles,
+    this.blockLanes = 0,
+    this.minLane = 0,
   });
 
   final int rows;
@@ -67,6 +69,18 @@ class LevelConfig {
   /// Grow arrow tails into leftover holes after placement (off for the
   /// tutorial levels so their arrows stay short).
   final bool fillHoles;
+
+  /// How strongly new arrows are put in the escape lanes of arrows already
+  /// on the board (0 = ignore lanes, 1 = always prefer them). Every arrow
+  /// placed in another arrow's lane is a trap: that arrow can't leave until
+  /// this one is gone. High values mean few free arrows at the start and
+  /// long chains of moves that must happen in order.
+  final double blockLanes;
+
+  /// Fewest empty cells an arrow needs ahead of its head. An arrow on the
+  /// edge pointing straight out can never be trapped, so hard levels ask
+  /// for room in front where other arrows can sit.
+  final int minLane;
 }
 
 class LevelGenerator {
@@ -77,34 +91,70 @@ class LevelGenerator {
   static const int maxCols = 22;
   static const int maxRows = 30;
 
-  /// Knobs for a point on the difficulty curve. [t] runs from 0 (first
-  /// level) to 1 (hardest). [extraCols] makes the board bigger than the
-  /// curve says; the level builder uses it when a board size runs out of
-  /// harder puzzles.
-  static LevelConfig configAt(double t, {int extraCols = 0}) {
-    t = t.clamp(0.0, 1.0);
-    final cols = min(4 + (t * 18).floor() + extraCols, maxCols);
+  /// Number of levels the difficulty schedule is laid out for.
+  static const int scheduledLevels = 300;
+
+  /// Board columns for level [number]: slow growth while learning (4 to 11
+  /// columns over levels 1-100), fast growth after that (12 to 21 over
+  /// levels 101-200), then the biggest board.
+  static int colsForLevel(int number) {
+    final n = number.clamp(1, scheduledLevels);
+    if (n <= 100) return 4 + (8 * (n - 1)) ~/ 100;
+    if (n <= 200) return 12 + (10 * (n - 101)) ~/ 100;
+    return maxCols;
+  }
+
+  /// Difficulty knob position for level [number], from 0 to 1. Rises slowly
+  /// to 0.35 by level 100, then steeply to 0.8 by level 200 and on to 1 at
+  /// level 300.
+  static double difficultyForLevel(int number) {
+    final n = number.clamp(1, scheduledLevels);
+    if (n <= 100) return .35 * (n - 1) / 99;
+    if (n <= 200) return .35 + .45 * (n - 100) / 100;
+    return .8 + .2 * (n - 200) / 100;
+  }
+
+  /// Knobs for a board with [cols] columns at difficulty [d] (0 to 1).
+  static LevelConfig configAt(double d, {required int cols}) {
+    d = d.clamp(0.0, 1.0);
+    cols = cols.clamp(4, maxCols);
     final rows = min(cols + 1 + cols ~/ 3, maxRows);
-    final tutorial = t < .01;
+    final tutorial = d < .005;
     return LevelConfig(
       rows: rows,
       cols: cols,
       minLength: 2,
-      maxLength: 3 + (t * 13).round(),
-      fill: tutorial ? .6 : min(.7 + t * .6, .97),
-      straightness: .7 - t * .25,
-      aimAcross: tutorial ? 0 : .2 + t * .55,
+      maxLength: 3 + (d * 13).round(),
+      fill: tutorial ? .6 : min(.7 + d * .6, .97),
+      straightness: .7 - d * .3,
+      aimAcross: tutorial ? 0 : .2 + d * .55,
       fillHoles: !tutorial,
+      // Traps start just before level 100 and are at full strength from
+      // about level 190.
+      blockLanes: ((d - .3) / .5).clamp(0.0, 1.0),
+      minLane: d < .35
+          ? 0
+          : d < .6
+              ? 1
+              : d < .8
+                  ? 2
+                  : 3,
     );
   }
+
+  /// Knobs for level [number] on the schedule.
+  static LevelConfig configForLevel(int number) => configAt(
+        difficultyForLevel(number),
+        cols: colsForLevel(number),
+      );
 
   /// Level used after the bundled levels run out: the hardest settings,
   /// best of several tries.
   static Level generate(int number) {
-    final config = configAt(1);
+    final config = configForLevel(scheduledLevels);
     List<ArrowPath> best = const [];
     var bestScore = double.negativeInfinity;
-    for (var attempt = 0; attempt < 8; attempt++) {
+    for (var attempt = 0; attempt < 4; attempt++) {
       final arrows = build(config, number * 7919 + attempt * 104729 + 17);
       final score = difficultyOf(config, arrows).score;
       if (score > bestScore) {
@@ -147,30 +197,45 @@ class LevelGenerator {
     final target = (totalCells * config.fill).round();
     var filled = 0;
 
+    // For each empty cell: how many currently free arrows would be trapped
+    // by putting something there.
+    var laneHits = <Cell, int>{};
+
     void place(List<Cell> cells) {
       final arrow = ArrowPath(id: arrows.length, cells: cells);
       board.add(arrow);
       arrows.add(arrow);
       filled += cells.length;
+      if (config.blockLanes > 0) laneHits = _freeLaneHits(board);
     }
+
+    Cell randomCell() =>
+        Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
 
     // Random placement.
     var failures = 0;
     while (filled < target && failures < totalCells * 20) {
       // Early arrows (removed last) go deep inside the board; the outer
       // ring is left for the arrows that will leave first.
-      var head = Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
-      if (filled < target * .5) {
+      var head = randomCell();
+      if (laneHits.isNotEmpty && rng.nextDouble() < config.blockLanes) {
+        // Trap a free arrow: sit in the lane cell that traps the most.
+        final most = laneHits.values.reduce(max);
+        final best = [
+          for (final e in laneHits.entries)
+            if (e.value == most) e.key,
+        ];
+        head = best[rng.nextInt(best.length)];
+      } else if (filled < target * .5) {
         for (var i = 0; i < 3; i++) {
-          final other =
-              Cell(rng.nextInt(config.rows), rng.nextInt(config.cols));
+          final other = randomCell();
           if (_depth(config, other) > _depth(config, head)) head = other;
         }
       }
       final dir = rng.nextDouble() < config.aimAcross
           ? _longestLane(board, head) ?? Dir.values[rng.nextInt(4)]
           : Dir.values[rng.nextInt(4)];
-      final cells = _grow(board, rng, config, head, dir);
+      final cells = _grow(board, rng, config, head, dir, laneHits);
       if (cells == null) {
         failures++;
       } else {
@@ -186,17 +251,27 @@ class LevelGenerator {
           for (var c = 0; c < config.cols; c++)
             if (board.isEmpty(Cell(r, c))) Cell(r, c),
       ]..shuffle(rng);
+      if (config.blockLanes > 0) {
+        // Holes inside other arrows' lanes first: they make traps.
+        empty.sort((a, b) => (laneHits[b] ?? 0).compareTo(laneHits[a] ?? 0));
+      }
       for (final start in empty) {
         if (filled >= target) break;
         if (!board.isEmpty(start)) continue;
-        final cells = _growFromTail(board, rng, config, start);
+        final cells = _growFromTail(board, rng, config, start, laneHits);
         if (cells != null) place(cells);
       }
     }
 
     // Tutorial levels keep their short arrows.
     if (config.fillHoles) {
-      _extendTails(board, arrows, rng, config.maxLength + 4);
+      _extendTails(
+        board,
+        arrows,
+        rng,
+        config.maxLength + 4,
+        trapFirst: config.blockLanes > 0,
+      );
     }
     return arrows;
   }
@@ -212,8 +287,9 @@ class LevelGenerator {
     PuzzleBoard board,
     List<ArrowPath> arrows,
     Random rng,
-    int maxLength,
-  ) {
+    int maxLength, {
+    bool trapFirst = false,
+  }) {
     // For every cell, the latest placed arrow whose lane crosses it.
     final latestLane = <Cell, int>{};
     for (var k = 0; k < arrows.length; k++) {
@@ -226,13 +302,20 @@ class LevelGenerator {
     }
 
     var changed = true;
+    var hits = <Cell, int>{};
     while (changed) {
       changed = false;
+      if (trapFirst) hits = _freeLaneHits(board);
       final order = [for (var k = 0; k < arrows.length; k++) k]..shuffle(rng);
       for (final k in order) {
         final a = arrows[k];
         if (a.length >= maxLength) continue;
         final dirs = [...Dir.values]..shuffle(rng);
+        if (trapFirst) {
+          // Growing into a free arrow's lane traps it.
+          dirs.sort((x, y) =>
+              (hits[a.tail.step(y)] ?? 0).compareTo(hits[a.tail.step(x)] ?? 0));
+        }
         for (final d in dirs) {
           final c = a.tail.step(d);
           if (!board.inBounds(c) || !board.isEmpty(c)) continue;
@@ -246,6 +329,49 @@ class LevelGenerator {
         }
       }
     }
+  }
+
+  /// For every empty cell, the number of arrows that can escape right now
+  /// whose escape lane runs through it.
+  static Map<Cell, int> _freeLaneHits(PuzzleBoard board) {
+    final hits = <Cell, int>{};
+    for (final a in board.arrows) {
+      final lane = <Cell>[];
+      var c = a.head.step(a.direction);
+      var clear = true;
+      while (board.inBounds(c)) {
+        if (!board.isEmpty(c)) {
+          clear = false;
+          break;
+        }
+        lane.add(c);
+        c = c.step(a.direction);
+      }
+      if (!clear) continue;
+      for (final cell in lane) {
+        hits[cell] = (hits[cell] ?? 0) + 1;
+      }
+    }
+    return hits;
+  }
+
+  /// Picks one of [options] (steps from [from]); with probability
+  /// [LevelConfig.blockLanes] it prefers a step onto another arrow's lane.
+  static Dir _preferLanes(
+    List<Dir> options,
+    Cell from,
+    Random rng,
+    LevelConfig config,
+    Map<Cell, int> laneHits,
+  ) {
+    if (options.length > 1 && rng.nextDouble() < config.blockLanes) {
+      final onLane = [
+        for (final d in options)
+          if ((laneHits[from.step(d)] ?? 0) > 0) d,
+      ];
+      if (onLane.isNotEmpty) return onLane[rng.nextInt(onLane.length)];
+    }
+    return options[rng.nextInt(options.length)];
   }
 
   /// Direction with the longest clear lane from [head], if any is clear.
@@ -293,8 +419,12 @@ class LevelGenerator {
     Random rng,
     LevelConfig config,
     Cell start,
+    Map<Cell, int> laneHits,
   ) {
     final path = [start];
+    // Hard levels walk further before taking an exit, so the new arrow
+    // covers more lane cells and is less often a quick free move.
+    final minExit = 3 + (config.blockLanes * 3).round();
     final body = {start};
     Dir? heading;
     final limit = config.maxLength + 6;
@@ -313,19 +443,22 @@ class LevelGenerator {
       for (final d in options..shuffle(rng)) {
         final next = path.last.step(d);
         if (path.length + 1 >= config.minLength &&
-            _clearLane(board, next, d, body) != null) {
+            (_clearLane(board, next, d, body)?.length ?? -1) >=
+                config.minLane) {
           exit = d;
           break;
         }
       }
-      if (exit != null && (path.length + 1 >= 3 || rng.nextBool())) {
+      if (exit != null && (path.length + 1 >= minExit || rng.nextBool())) {
         path.add(path.last.step(exit));
         return path;
       }
       final keep = heading != null &&
           options.contains(heading) &&
           rng.nextDouble() < config.straightness;
-      heading = keep ? heading : options[rng.nextInt(options.length)];
+      heading = keep
+          ? heading
+          : _preferLanes(options, path.last, rng, config, laneHits);
       final next = path.last.step(heading);
       path.add(next);
       body.add(next);
@@ -341,6 +474,7 @@ class LevelGenerator {
     LevelConfig config,
     Cell head,
     Dir dir,
+    Map<Cell, int> laneHits,
   ) {
     if (!board.isEmpty(head)) return null;
 
@@ -352,6 +486,7 @@ class LevelGenerator {
       lane.add(c);
       c = c.step(dir);
     }
+    if (lane.length < config.minLane) return null;
 
     bool usable(Cell cell, Set<Cell> body) =>
         board.inBounds(cell) &&
@@ -382,7 +517,7 @@ class LevelGenerator {
         }
       }
       if (options.isEmpty) break;
-      heading = options[rng.nextInt(options.length)];
+      heading = _preferLanes(options, path.last, rng, config, laneHits);
       final next = path.last.step(heading);
       path.add(next);
       body.add(next);

@@ -8,11 +8,13 @@
 // one before it (see BoardStats.score): more arrow to trace, longer chains of
 // ordered moves, fewer safe first moves.
 //
-// Board sizes step from 4 columns up to LevelGenerator.maxCols, with an equal
-// share of levels per size. For each size the builder makes a pool of boards,
-// sorts them by score and hands out evenly spaced ones that beat the previous
-// level, staying in the lower part of the pool so the next size still has
-// harder boards to offer.
+// Board size and generator knobs follow LevelGenerator's schedule: gentle up
+// to level 100, then a steep climb (bigger boards, traps in escape lanes,
+// longer arrows) to level 200, and the biggest board with full-strength
+// traps from there to 300. Levels sharing a board size share a pool of
+// boards; the builder sorts the pool by score and hands out evenly spaced
+// boards that beat the previous level, staying in the lower part of the pool
+// so the next group still has harder boards to offer.
 
 import 'dart:convert';
 import 'dart:io';
@@ -37,25 +39,40 @@ typedef Option = ({
 
 void main(List<String> args) {
   final count = args.isNotEmpty ? int.parse(args[0]) : 300;
-  const minCols = 4;
-  const sizes = LevelGenerator.maxCols - minCols + 1;
   final levels = <Map<String, dynamic>>[];
   var previousScore = 0.0;
   final sw = Stopwatch()..start();
+  if (count != LevelGenerator.scheduledLevels) {
+    throw ArgumentError('the difficulty schedule is laid out for '
+        '${LevelGenerator.scheduledLevels} levels');
+  }
+  // Consecutive levels with the same board size share one pool of boards.
+  final groups = <List<int>>[];
+  for (var n = 1; n <= count; n++) {
+    final cols = LevelGenerator.colsForLevel(n);
+    if (groups.isEmpty || groups.last.first != cols) groups.add([cols]);
+    groups.last.add(n);
+  }
 
-  for (var size = 0; size < sizes; size++) {
-    // Levels for this size: an equal share, the remainder to the big boards.
-    final first = (size * count / sizes).round() + 1;
-    final last = ((size + 1) * count / sizes).round();
-    final wanted = last - first + 1;
-    final t = size / (sizes - 1);
-    final config = LevelGenerator.configAt(t);
-    final isLast = size == sizes - 1;
+  for (var g = 0; g < groups.length; g++) {
+    final group = groups[g].sublist(1);
+    final first = group.first;
+    final wanted = group.length;
+    final isLast = g == groups.length - 1;
+    // The knobs of the middle level stand for the whole group; the biggest
+    // board uses the hardest knobs and a bigger pool for its 100 levels.
+    final config = LevelGenerator.configForLevel(
+      isLast ? group.last : group[wanted ~/ 2],
+    );
+    final size = g;
 
     List<Option>? picked;
-    for (var poolTries = poolSize; picked == null; poolTries *= 2) {
-      if (poolTries > poolSize * 8) {
-        throw StateError('size ${config.cols}: ran out of harder boards');
+    for (var poolTries = isLast ? poolSize * 4 : poolSize;
+        picked == null;
+        poolTries *= 2) {
+      if (poolTries > poolSize * 16) {
+        throw StateError('levels $first-${group.last}: ran out of harder '
+            'boards');
       }
       picked = _pick(config, size, poolTries, previousScore, wanted, isLast);
     }

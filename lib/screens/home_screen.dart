@@ -24,7 +24,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GameController _preview = GameController(_logoLevel());
 
   static Level _logoLevel() {
-    final config = LevelGenerator.configAt(.1);
+    final config = LevelGenerator.configAt(.1, cols: 6);
     return LevelGenerator.toLevel(0, config, LevelGenerator.build(config, 6));
   }
 

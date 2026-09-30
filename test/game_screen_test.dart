@@ -138,8 +138,12 @@ Future<void> _waitForDialog(WidgetTester tester, String text, int level) async {
 }
 
 Future<void> _waitForBoard(WidgetTester tester, int level) async {
-  for (var i = 0; i < 100; i++) {
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  for (var i = 0; i < 300; i++) {
+    // Real time for work off the test clock (asset loading, background
+    // level generation).
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
     await tester.pump(const Duration(milliseconds: 50));
     final boards = find.byType(ArrowBoardView).evaluate();
     // The previous result dialog must be fully gone too.
