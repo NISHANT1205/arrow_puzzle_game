@@ -219,20 +219,83 @@ void main() {
       final track = buildTrack(cube, top, 6);
       // Points are half a cell apart all the way, bends included.
       for (var i = 1; i < track.length; i++) {
-        expect((track[i] - track[i - 1]).distance, closeTo(.5, 1e-9));
+        expect((track[i].p - track[i - 1].p).length, closeTo(.5, 1e-9));
       }
-      // It passes through the centres of the cells the lane visits.
-      Offset centre(int r, int c) {
-        final p = cube.center(Cell(r, c));
-        return Offset(p.x, p.y);
+      // It passes through the centres of the cells the lane visits, on the
+      // right faces.
+      for (final cell in const [Cell(1, 2), Cell(6, 1), Cell(7, 1)]) {
+        final at = track.where((t) => t.p.same(cube.center3(cell)));
+        expect(at, isNotEmpty, reason: '$cell not on the track');
+        expect(at.first.face, cube.faceOf(cell));
       }
+      // Once off the cube the track is in the air.
+      expect(track.last.face, -1);
+    });
+  });
 
-      for (final cell in [centre(1, 2), centre(6, 1), centre(7, 1)]) {
-        expect(
-          track.any((p) => (p - cell).distance < 1e-9),
-          isTrue,
-          reason: '$cell not on the track',
-        );
+  group('cube with arrows on all sides', () {
+    const cube = CubeShape(3, allSides: true);
+    // Faces: 0 top, 1 left, 2 right, 3 bottom, 4 back-left, 5 back-right.
+
+    test('has six faces that meet edge to edge', () {
+      expect(cube.faceCount, 6);
+      expect(cube.rows, 18);
+      // Every cell centre lies on the surface of the 3 x 3 x 3 cube.
+      for (final c in cube.cells) {
+        final p = cube.center3(c);
+        final onSurface = [p.x, p.y, p.z].any((v) => v == 0 || v == 3);
+        expect(onSurface, isTrue, reason: '$c at $p');
+      }
+      // Walking off any face lands on the neighbouring face, and walking
+      // back returns to the same cell.
+      for (final c in cube.cells) {
+        for (final d in Dir.values) {
+          final next = cube.ahead(c, d);
+          expect(next, isNotNull, reason: '$c $d');
+          final back = cube.ahead(next!.$1, next.$2.opposite);
+          expect(back?.$1, c, reason: '$c $d and back');
+        }
+      }
+    });
+
+    test('a lane goes over one edge, then flies off at the next', () {
+      // Left face, bottom row, heading down: over the edge onto the bottom
+      // face, across it, and off at its far edge.
+      final lane = cube.laneSteps(const Cell(5, 1), Dir.down).toList();
+      final faces = lane.map((s) => cube.faceOf(s.$1)).toSet();
+      expect(faces, {CubeShape.bottom});
+      expect(lane.length, 3);
+      // On the three-face cube the same move leaves the cube at once.
+      expect(const CubeShape(3).lane(const Cell(5, 1), Dir.down), isEmpty);
+    });
+
+    test('only faces turned to the camera are visible', () {
+      const front = CubeView.iso;
+      expect(
+        [for (var f = 0; f < 6; f++) cube.faceVisible(f, front)],
+        [true, true, true, false, false, false],
+      );
+      // From behind and below, the back and bottom faces show instead.
+      final back = CubeView(front.yaw + 3.14159, -front.pitch);
+      expect(
+        [for (var f = 0; f < 6; f++) cube.faceVisible(f, back)],
+        [false, false, false, true, true, true],
+      );
+    });
+
+    test('all-sides cube boards are solvable and use every side', () {
+      for (final n in [5, 8]) {
+        final config = LevelGenerator.cubeConfig(n, .9, allSides: true);
+        for (var seed = 0; seed < 6; seed++) {
+          final arrows = LevelGenerator.build(config, seed);
+          final level = LevelGenerator.toLevel(1, config, arrows);
+          expect(PuzzleBoard.forLevel(level).analyze().solvable, isTrue);
+          final shape = level.shape as CubeShape;
+          final faces = {for (final a in arrows) shape.faceOf(a.head)};
+          expect(faces.length, greaterThanOrEqualTo(5), reason: 'n=$n $faces');
+          final back = LevelCodec.decodeLevel(LevelCodec.encodeLevel(level));
+          expect((back.shape as CubeShape).allSides, isTrue);
+        }
       }
     });
   });

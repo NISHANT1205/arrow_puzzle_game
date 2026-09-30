@@ -63,27 +63,32 @@ void main() {
     }
   });
 
-  test('3D cube levels appear from level 110, every 10 levels', () {
+  test('levels below 100 are flat; cubes come every 5 levels from 100', () {
     final cubes = [
       for (final l in levels)
-        if (l.isCube) l.number
+        if (l.isCube) l.number,
     ];
-    expect(cubes.length, greaterThanOrEqualTo(10));
+    expect(cubes.length, greaterThanOrEqualTo(30));
     for (final n in cubes) {
-      expect(n, greaterThanOrEqualTo(110));
-      expect(n % 10, 0);
+      expect(n, greaterThanOrEqualTo(100));
+      expect(n % 5, 0);
     }
     for (final l in levels.where((l) => l.isCube)) {
-      // Cube levels really use the cube: some lane runs over an edge.
       final shape = l.shape as CubeShape;
-      final crossesEdge = l.arrows.any((a) {
-        final face = shape.faceOf(a.head);
-        return shape.lane(a.head, a.direction).any(
-              (c) => shape.faceOf(c) != face,
-            );
-      });
-      expect(crossesEdge, isTrue, reason: 'level ${l.number}');
-      // And some arrows start out blocked by an arrow on another face.
+      // From level 150 cubes have arrows on all six sides.
+      expect(shape.allSides, l.number >= 150, reason: 'level ${l.number}');
+      if (shape.allSides) {
+        final perFace = List.filled(6, 0);
+        for (final a in l.arrows) {
+          perFace[shape.faceOf(a.head)]++;
+        }
+        expect(
+          perFace.every((k) => k >= 2),
+          isTrue,
+          reason: 'level ${l.number}: arrows per side $perFace',
+        );
+      }
+      // Some arrows start out blocked by an arrow on another face.
       final board = PuzzleBoard.forLevel(l);
       final crossFace = l.arrows.where((a) {
         final r = board.evaluate(a);

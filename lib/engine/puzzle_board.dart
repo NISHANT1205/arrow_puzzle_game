@@ -157,6 +157,7 @@ class PuzzleBoard {
           layers: layers,
           narrowest: narrowest,
           solvable: false,
+          shapeFactor: _shapeFactor,
         );
       }
       layers++;
@@ -172,7 +173,15 @@ class PuzzleBoard {
       layers: layers,
       narrowest: narrowest,
       solvable: true,
+      shapeFactor: _shapeFactor,
     );
+  }
+
+  /// Extra difficulty of the board's shape (see [BoardStats.shapeFactor]).
+  double get _shapeFactor {
+    final s = shape;
+    if (s is! CubeShape) return 1;
+    return s.allSides ? 2 : 1.25;
   }
 
   /// Removing an arrow only ever frees cells, so repeatedly removing any free
@@ -203,6 +212,7 @@ class BoardStats {
     required this.layers,
     required this.narrowest,
     required this.solvable,
+    this.shapeFactor = 1,
   });
 
   final int arrows;
@@ -223,13 +233,20 @@ class BoardStats {
 
   final bool solvable;
 
+  /// How much harder the board's shape makes it: 1 for a flat board. On a
+  /// three-face cube lanes bend over edges onto other faces (1.25). On an
+  /// all-sides cube half the arrows are out of sight at any moment and the
+  /// player keeps turning it to find them (2).
+  final double shapeFactor;
+
   /// Share of arrows that are traps at the start (0 = all free).
   double get trapRatio => arrows == 0 ? 0 : 1 - initialFree / arrows;
 
   /// One number for "how hard is this board": more arrow to trace, longer
   /// chains of moves that must happen in order, and fewer safe first moves
   /// all make it harder. Bundled levels strictly increase in this score.
-  double get score => cells * (1 + .2 * layers) * (.6 + trapRatio);
+  double get score =>
+      cells * (1 + .2 * layers) * (.6 + trapRatio) * shapeFactor;
 
   @override
   String toString() => 'arrows=$arrows free=$initialFree layers=$layers '

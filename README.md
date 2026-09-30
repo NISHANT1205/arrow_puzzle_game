@@ -73,25 +73,37 @@ dart run tool/build_levels.dart 300   # rebuilds assets/levels/levels.json
 
 ### 3D cube levels
 
-From level 110, every 10th level can be a **3D CUBE** level. The board is
-the three visible faces of an isometric cube (top, left and right), shaded
-so it reads as a box.
+Levels 1–99 are flat boards. From level 100, **every 5th level is a 3D
+cube**:
 
-- Arrow bodies stay on one face.
-- Escape lanes run **over the cube's edges onto the next face**, and an
-  arrow only leaves at the cube's outline. So an arrow on the top face can
-  be blocked by one on a side face.
-- `CubeShape` works this out in 3D: moving off a face along direction `d`
-  continues on the face whose normal is `d`, now heading into the cube
-  along minus the old face's normal. Directions that lead to the hidden
-  faces leave the board.
-- Cube boards are built by the same always-solvable generator. A seam bias
-  puts arrows at the cube edges pointing over them.
-- The builder keeps only cube boards where at least 2 arrows start out
-  blocked by an arrow on another face. It uses one only if it scores
-  between the level before and the level after, so the "always harder" rule
-  still holds. When no cube fits, the level stays flat.
-- It picks the smallest cube that fits, so cells stay big enough to read.
+| Levels | Cube |
+|---|---|
+| 100–145 | The three faces seen from the front corner. The cube turns a little. |
+| 150–300 | **Arrows on all six sides.** Turn the cube freely to find them. |
+
+- **Turning**: drag with one finger to turn the cube, pinch to zoom.
+- **Hidden sides**: faces turned away, and the arrows on them, are hidden
+  and can't be tapped. When a hint points at an arrow on a hidden side, the
+  cube turns to show it.
+- **Rule**: arrow bodies stay on one face. An escape lane runs over one cube
+  edge onto the next face, heading straight away from the face it left, and
+  flies off the cube at the next edge. On the three-face cube a lane heading
+  for a missing face leaves right there. So arrows on different faces block
+  each other.
+- **Geometry**: `CubeShape` works all this out in 3D. `CubeView`
+  (yaw/pitch) projects it onto the screen.
+- **Generator**: the always-solvable generator builds cubes too. A seam
+  bias puts arrows at cube edges pointing over them. On all-sides cubes new
+  arrows go mostly onto the emptiest face, so every side gets arrows.
+- **Builder rules**: a cube level must have at least 2 arrows blocked by an
+  arrow on another face at the start, and every side of an all-sides cube
+  carries at least 2 arrows. The cube must score between the level before
+  and the level after, or the level stays flat. That happened at 205–220,
+  230, 240, 245, 255 and 275, so there are 32 cube levels.
+- **3D counts in the score**: on a three-face cube lanes bend onto other
+  faces, so its score is ×1.25. On an all-sides cube half the arrows are
+  always out of sight, so its score is ×2. This is a judgement call, set in
+  `BoardStats.shapeFactor`.
 
 ### Always solvable, never stuck
 

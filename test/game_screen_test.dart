@@ -16,9 +16,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final int bundledCount = LevelRepository.parse(
+final List<Map<String, dynamic>> bundled = LevelRepository.parse(
   File(LevelRepository.assetPath).readAsStringSync(),
-).length;
+);
+final int bundledCount = bundled.length;
+
+/// Number of the first bundled cube level (with arrows on all sides, or on
+/// the three front faces).
+int _firstCube({required bool allSides}) {
+  for (final l in bundled) {
+    final shape = l['shape'] as Map<String, dynamic>?;
+    if (shape != null && (shape['all'] == true) == allSides) {
+      return l['n'] as int;
+    }
+  }
+  throw StateError('no cube level');
+}
 
 void main() {
   setUp(() async {
@@ -68,6 +81,37 @@ void main() {
     await _waitForDialog(tester, 'Level Complete!', 40);
   });
 
+  testWidgets('a cube turns when dragged', (tester) async {
+    await _openLevel(tester, _firstCube(allSides: true));
+    final before = _board(tester).view;
+    await tester.drag(find.byType(ArrowBoardView), const Offset(-120, 60));
+    await tester.pump(const Duration(milliseconds: 100));
+    final after = _board(tester).view;
+    expect(after.yaw, isNot(closeTo(before.yaw, .01)));
+    expect(after.pitch, isNot(closeTo(before.pitch, .01)));
+  });
+
+  testWidgets('a hint on the back of the cube turns it into view',
+      (tester) async {
+    await _openLevel(tester, _firstCube(allSides: true));
+    final game = _game(tester);
+    // Clear arrows until the hint lands on a hidden side.
+    while (true) {
+      final hint = game.hint();
+      expect(hint, isNotNull);
+      if (!_board(tester).isShown(hint!.head)) {
+        // The turn starts on the next frame and takes under half a second.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(_board(tester).isShown(hint.head), isTrue);
+        return;
+      }
+      await _tapArrow(tester, hint);
+      await tester.pump(const Duration(milliseconds: 50));
+      if (game.status != GameStatus.playing) fail('no hidden hint found');
+    }
+  });
+
   testWidgets('winning with the last heart still wins', (tester) async {
     await _openLevel(tester, 120);
     for (var i = 0; i < GameController.maxLives - 1; i++) {
@@ -100,13 +144,19 @@ ArrowPath _blockedArrow(WidgetTester tester) => _game(tester)
     .arrows
     .firstWhere((a) => _game(tester).board.evaluate(a) is Blocked);
 
-/// Taps the middle of [arrow]'s head cell on screen.
+ArrowBoardViewState _board(WidgetTester tester) =>
+    tester.state<ArrowBoardViewState>(find.byType(ArrowBoardView));
+
+/// Taps the middle of [arrow]'s head cell on screen, first turning the cube
+/// when the arrow is on a side facing away (as a player would).
 Future<void> _tapArrow(WidgetTester tester, ArrowPath arrow) async {
-  final finder = find.byType(ArrowBoardView);
-  final cell = tester.widget<ArrowBoardView>(finder).cellSize;
-  final origin = tester.getTopLeft(finder);
-  final p = _game(tester).level.shape.center(arrow.head);
-  await tester.tapAt(origin + Offset(p.x, p.y) * cell);
+  if (!_board(tester).isShown(arrow.head)) {
+    _board(tester).showNow(arrow.head);
+    await tester.pump();
+    expect(_board(tester).isShown(arrow.head), isTrue);
+  }
+  final origin = tester.getTopLeft(find.byType(ArrowBoardView));
+  await tester.tapAt(origin + _board(tester).positionOf(arrow.head));
   await tester.pump(const Duration(milliseconds: 16));
 }
 

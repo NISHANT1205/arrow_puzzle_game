@@ -155,11 +155,13 @@ class LevelGenerator {
     );
   }
 
-  /// Knobs for a 3D cube level: an [n] x [n] x [n] cube at difficulty [d].
-  static LevelConfig cubeConfig(int n, double d) {
+  /// Knobs for a 3D cube level: an [n] x [n] x [n] cube at difficulty [d],
+  /// with arrows on the three front faces or on [allSides].
+  static LevelConfig cubeConfig(int n, double d, {bool allSides = false}) {
+    final faces = allSides ? 6 : 3;
     final flat = configAt(d, cols: n);
     return LevelConfig(
-      rows: 3 * n,
+      rows: faces * n,
       cols: n,
       minLength: 2,
       // A face is only n cells wide, so arrows stay a little shorter.
@@ -168,10 +170,12 @@ class LevelGenerator {
       straightness: flat.straightness,
       aimAcross: flat.aimAcross,
       fillHoles: true,
-      blockLanes: flat.blockLanes,
+      // Lanes on a cube are long already; fewer deliberate traps keep every
+      // face filled.
+      blockLanes: flat.blockLanes * (allSides ? .5 : 1),
       minLane: min(flat.minLane, 2),
-      seamBias: .45,
-      shape: CubeShape(n),
+      seamBias: allSides ? .3 : .45,
+      shape: CubeShape(n, allSides: allSides),
     );
   }
 
@@ -242,6 +246,10 @@ class LevelGenerator {
     final target = (totalCells * config.fill).round();
     var filled = 0;
 
+    // Cells filled on each face, so cubes get arrows on every side.
+    final faceFill = List.filled(shape.faceCount, 0);
+    final perFace = allCells.length ~/ shape.faceCount;
+
     // For each empty cell: how many currently free arrows would be trapped
     // by putting something there.
     var laneHits = <Cell, int>{};
@@ -251,10 +259,21 @@ class LevelGenerator {
       board.add(arrow);
       arrows.add(arrow);
       filled += cells.length;
+      faceFill[shape.faceOf(arrow.head)] += cells.length;
       if (config.blockLanes > 0) laneHits = _freeLaneHits(board);
     }
 
-    Cell randomCell() => allCells[rng.nextInt(allCells.length)];
+    Cell randomCell() {
+      if (shape.faceCount > 1 && rng.nextDouble() < .7) {
+        // Mostly start on the emptiest face.
+        var face = 0;
+        for (var f = 1; f < faceFill.length; f++) {
+          if (faceFill[f] < faceFill[face]) face = f;
+        }
+        return allCells[face * perFace + rng.nextInt(perFace)];
+      }
+      return allCells[rng.nextInt(allCells.length)];
+    }
 
     // Cells at a cube edge with the direction that goes over it.
     final seamSpots = config.seamBias == 0
@@ -279,9 +298,19 @@ class LevelGenerator {
         seamDir = spot.$2;
       } else if (laneHits.isNotEmpty && rng.nextDouble() < config.blockLanes) {
         // Trap a free arrow: sit in the lane cell that traps the most.
-        final most = laneHits.values.reduce(max);
+        // On a cube, prefer traps on the emptiest face.
+        Iterable<MapEntry<Cell, int>> spots = laneHits.entries;
+        if (shape.faceCount > 1) {
+          final least = [
+            for (final e in spots) faceFill[shape.faceOf(e.key)],
+          ].reduce(min);
+          final onLeast =
+              spots.where((e) => faceFill[shape.faceOf(e.key)] == least);
+          if (onLeast.isNotEmpty) spots = onLeast;
+        }
+        final most = spots.map((e) => e.value).reduce(max);
         final best = [
-          for (final e in laneHits.entries)
+          for (final e in spots)
             if (e.value == most) e.key,
         ];
         head = best[rng.nextInt(best.length)];

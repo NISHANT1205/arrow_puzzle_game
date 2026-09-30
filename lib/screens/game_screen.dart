@@ -231,6 +231,29 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       (constraints.maxHeight - pad * 2) / boardH,
                       56.0,
                     ].reduce((a, b) => a < b ? a : b);
+                    if (level.isCube) {
+                      // The cube handles its own turning and zooming.
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: ArrowBoardView(
+                              key: ValueKey(level.number),
+                              controller: _game,
+                              cellSize: cell,
+                              palette: palette,
+                              onMove: _onMove,
+                              onSettled: _onSettled,
+                            ),
+                          ),
+                          const Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 4,
+                            child: _TurnHint(),
+                          ),
+                        ],
+                      );
+                    }
                     return InteractiveViewer(
                       transformationController: _zoom,
                       minScale: 1,
@@ -506,6 +529,34 @@ class _WideButton extends StatelessWidget {
           textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
         child: Text(label),
+      ),
+    );
+  }
+}
+
+/// "Drag to turn the cube" note under a cube.
+class _TurnHint extends StatelessWidget {
+  const _TurnHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final muted =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: .45);
+    return IgnorePointer(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.threed_rotation_rounded, size: 16, color: muted),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              'Drag to turn · pinch to zoom',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: muted, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }

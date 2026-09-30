@@ -16,9 +16,10 @@
 // boards that beat the previous level, staying in the lower part of the pool
 // so the next group still has harder boards to offer.
 //
-// A second pass turns every 10th level from 110 on into a 3D cube level
-// (see CubeShape) when a cube board scores between the level before and the
-// level after it, so the "always harder" rule still holds.
+// A second pass turns every 5th level from 100 on into a 3D cube level (see
+// CubeShape) when a cube board scores between the level before and the level
+// after it, so the "always harder" rule still holds. From level 150 the
+// cubes carry arrows on all six sides.
 
 import 'dart:convert';
 import 'dart:io';
@@ -101,18 +102,22 @@ void main(List<String> args) {
     }
   }
 
-  // Second pass: turn every 10th level from 110 on into a 3D cube level,
+  // Second pass: turn every 5th level from 100 on into a 3D cube level,
   // when a cube fits between its neighbours' scores (harder than the level
-  // before, easier than the level after).
+  // before, easier than the level after). From level 150 the cubes have
+  // arrows on all six sides.
   final cubePools = <String, List<Option>>{};
-  for (var n = firstCubeLevel; n <= count; n += 10) {
+  for (var n = firstCubeLevel; n <= count; n += cubeEvery) {
+    final allSides = n >= allSidesFrom;
     final low = scores[n - 2] * minStep;
     final high = n == count ? double.infinity : scores[n] / minStep;
     final d = LevelGenerator.difficultyForLevel(n);
     Option? best;
-    for (var size = minCube; size <= maxCube; size++) {
-      final key = '$size@${(d * 10).round()}';
-      final pool = cubePools[key] ??= _cubePool(size, d);
+    final (minSize, maxSize) =
+        allSides ? (minAllSides, maxAllSides) : (minCube, maxCube);
+    for (var size = minSize; size <= maxSize; size++) {
+      final key = '$size@${(d * 10).round()}${allSides ? 'all' : ''}';
+      final pool = cubePools[key] ??= _cubePool(size, d, allSides);
       for (final option in pool) {
         final score = option.stats.score;
         if (score < low || score > high) continue;
@@ -157,23 +162,34 @@ void main(List<String> args) {
       '(${(file.lengthSync() / 1024).round()} KB) in ${sw.elapsed.inSeconds}s');
 }
 
-/// Cube levels: every 10th level from here, cubes of these sizes.
-const int firstCubeLevel = 110;
+/// Cube levels: every [cubeEvery]th level from [firstCubeLevel]. Three-face
+/// cubes have edges of [minCube]-[maxCube] cells; from [allSidesFrom] on,
+/// cubes have arrows on all six sides and edges of
+/// [minAllSides]-[maxAllSides] cells.
+const int firstCubeLevel = 100;
+const int cubeEvery = 5;
+const int allSidesFrom = 150;
 const int minCube = 6;
 const int maxCube = 16;
+const int minAllSides = 4;
+const int maxAllSides = 12;
+
+/// Every side of an all-sides cube holds at least this many arrows.
+const int minArrowsPerFace = 2;
 const int minCrossFace = 2;
 
 /// A pool of cube boards of edge [size] at difficulty [d]. Only boards
 /// where at the start at least [minCrossFace] arrows are blocked by an arrow
-/// on another face are kept, so the 3D rule matters.
-List<Option> _cubePool(int size, double d) {
-  final config = LevelGenerator.cubeConfig(size, d);
+/// on another face are kept, so the 3D rule matters; all-sides cubes also
+/// need [minArrowsPerFace] arrows on every side.
+List<Option> _cubePool(int size, double d, bool allSides) {
+  final config = LevelGenerator.cubeConfig(size, d, allSides: allSides);
   final shape = config.shape as CubeShape;
   final pool = <Option>[];
   for (var i = 0; i < 120; i++) {
     final arrows = LevelGenerator.build(
       config,
-      size * 7000003 + (d * 1000).round() * 31 + i * 7919,
+      size * 7000003 + (d * 1000).round() * 31 + i * 7919 + (allSides ? 1 : 0),
     );
     final stats = LevelGenerator.difficultyOf(config, arrows);
     if (!stats.solvable) throw StateError('cube $size board $i stuck');
@@ -188,6 +204,13 @@ List<Option> _cubePool(int size, double d) {
       return r is Blocked && shape.faceOf(r.hitCell) != shape.faceOf(a.head);
     }).length;
     if (crossFace < minCrossFace) continue;
+    if (allSides) {
+      final perFace = List.filled(shape.faceCount, 0);
+      for (final a in arrows) {
+        perFace[shape.faceOf(a.head)]++;
+      }
+      if (perFace.any((k) => k < minArrowsPerFace)) continue;
+    }
     pool.add((config: config, arrows: arrows, stats: stats));
   }
   return pool;

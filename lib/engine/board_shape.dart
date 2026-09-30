@@ -2,17 +2,35 @@
 //
 // The surface arrows live on. A shape answers two questions for the rules:
 // which cell is straight ahead (lanes may turn a corner onto another face),
-// and which cell is next to another for an arrow's body. It also places
-// cells on screen.
+// and which cell is next to another for an arrow's body. It also gives every
+// cell a 3D position, which the board view projects onto the screen.
 //
-//  * RectShape - the flat rectangular board.
-//  * CubeShape - the three visible faces of an isometric cube. Bodies stay
-//    on one face, but escape lanes run over the cube's edges onto the next
-//    face and only leave at the cube's outline.
+//  * RectShape - the flat rectangular board (z = 0).
+//  * CubeShape - arrows on the faces of a cube: the three faces seen from the
+//    front corner, or all six sides. Bodies stay on one face. An escape lane
+//    runs over one cube edge onto the next face and leaves the cube at the
+//    edge after that (or at the outline, for the three-face cube).
 
 import 'dart:math' as math;
 
 import '../models/arrow_path.dart';
+
+/// A point or direction in 3D, in cell units.
+class V3 {
+  const V3(this.x, this.y, this.z);
+  final double x, y, z;
+
+  V3 operator +(V3 o) => V3(x + o.x, y + o.y, z + o.z);
+  V3 operator -(V3 o) => V3(x - o.x, y - o.y, z - o.z);
+  V3 operator *(double k) => V3(x * k, y * k, z * k);
+  double dot(V3 o) => x * o.x + y * o.y + z * o.z;
+  double get length => math.sqrt(dot(this));
+
+  bool same(V3 o) => (this - o).length < 1e-9;
+
+  @override
+  String toString() => '($x, $y, $z)';
+}
 
 /// A screen point in cell units. (The engine stays free of Flutter so the
 /// level tools run in plain Dart.)
@@ -32,6 +50,40 @@ class Pt {
   int get hashCode => Object.hash(x, y);
 }
 
+/// Where the camera looks at a cube from: [yaw] around the vertical axis and
+/// [pitch] above the horizon, in radians.
+class CubeView {
+  const CubeView(this.yaw, this.pitch);
+
+  final double yaw;
+  final double pitch;
+
+  /// The classic isometric view from the front corner, showing the top,
+  /// left and right faces.
+  static const iso = CubeView(math.pi / 4, 0.6154797086703874);
+
+  /// Unit vector from the cube towards the viewer.
+  V3 get toViewer => V3(
+        math.cos(pitch) * math.cos(yaw),
+        math.cos(pitch) * math.sin(yaw),
+        math.sin(pitch),
+      );
+
+  /// Screen right and screen up, as 3D directions.
+  V3 get right => V3(math.sin(yaw), -math.cos(yaw), 0);
+  V3 get up => V3(
+        -math.sin(pitch) * math.cos(yaw),
+        -math.sin(pitch) * math.sin(yaw),
+        math.cos(pitch),
+      );
+
+  CubeView copyWith({double? yaw, double? pitch}) =>
+      CubeView(yaw ?? this.yaw, pitch ?? this.pitch);
+
+  @override
+  String toString() => 'CubeView(yaw: $yaw, pitch: $pitch)';
+}
+
 abstract class BoardShape {
   const BoardShape();
 
@@ -49,15 +101,18 @@ abstract class BoardShape {
   /// null when the move leaves the board.
   (Cell, Dir)? ahead(Cell c, Dir d);
 
-  /// Cells straight ahead of [from] along [d] up to where the board ends,
-  /// following the lane around corners.
-  Iterable<Cell> lane(Cell from, Dir d) sync* {
+  /// Each cell (and direction of travel) straight ahead of [from] along [d],
+  /// up to where the lane leaves the board.
+  Iterable<(Cell, Dir)> laneSteps(Cell from, Dir d) sync* {
     var next = ahead(from, d);
     while (next != null) {
-      yield next.$1;
+      yield next;
       next = ahead(next.$1, next.$2);
     }
   }
+
+  /// Cells straight ahead of [from] along [d] up to where the board ends.
+  Iterable<Cell> lane(Cell from, Dir d) => laneSteps(from, d).map((s) => s.$1);
 
   /// The neighbour of [c] along [d] that an arrow body may continue into, or
   /// null. Bodies never cross from one face to another.
@@ -66,25 +121,47 @@ abstract class BoardShape {
   /// Distance of [c] from the edge of its face, in cells.
   int depth(Cell c);
 
-  /// Screen position of the centre of [c], in cell units.
-  Pt center(Cell c);
+  /// Face that [c] is on (always 0 on a flat board).
+  int faceOf(Cell c) => 0;
 
-  /// Screen position of the point half a cell from [c]'s centre along [d]:
-  /// the edge crossed when leaving [c] that way.
-  Pt edgePoint(Cell c, Dir d);
+  /// Number of faces.
+  int get faceCount => 1;
+
+  /// Outward normal of [face].
+  V3 normalOf(int face) => const V3(0, 0, 1);
+
+  /// 3D centre of [c].
+  V3 center3(Cell c);
+
+  /// 3D point half a cell from [c]'s centre along [d]: the edge crossed when
+  /// leaving [c] that way.
+  V3 edge3(Cell c, Dir d);
+
+  /// Screen position (cell units) of the 3D point [p] seen from [view].
+  Pt project(V3 p, [CubeView view = CubeView.iso]);
+
+  /// Screen position of the centre of [c], in the default view.
+  Pt center(Cell c) => project(center3(c));
+
+  /// Screen position of [edge3], in the default view.
+  Pt edgePoint(Cell c, Dir d) => project(edge3(c, d));
 
   /// Width and height of the drawn board, in cell units.
   (double, double) get extent;
 
-  /// Faces to shade, as screen polygons in cell units (empty for flat
-  /// boards). Listed top, left, right.
-  List<List<Pt>> get faces => const [];
+  /// Corners of each face, in 3D (empty for flat boards).
+  List<List<V3>> get faceCorners => const [];
+
+  /// Whether [face] faces the camera in [view].
+  bool faceVisible(int face, CubeView view) => true;
 
   Map<String, dynamic> toJson();
 
   static BoardShape fromJson(Map<String, dynamic>? json, int rows, int cols) {
     if (json == null || json['t'] == 'rect') return RectShape(rows, cols);
-    if (json['t'] == 'cube') return CubeShape(json['n'] as int);
+    if (json['t'] == 'cube') {
+      return CubeShape(json['n'] as int, allSides: json['all'] == true);
+    }
     throw FormatException('Unknown board shape ${json['t']}');
   }
 }
@@ -129,10 +206,13 @@ class RectShape extends BoardShape {
       );
 
   @override
-  Pt center(Cell c) => Pt(c.col + .5, c.row + .5);
+  V3 center3(Cell c) => V3(c.col + .5, c.row + .5, 0);
 
   @override
-  Pt edgePoint(Cell c, Dir d) => center(c) + Pt(d.dCol * .5, d.dRow * .5);
+  V3 edge3(Cell c, Dir d) => center3(c) + V3(d.dCol * .5, d.dRow * .5, 0);
+
+  @override
+  Pt project(V3 p, [CubeView view = CubeView.iso]) => Pt(p.x, p.y);
 
   @override
   (double, double) get extent => (cols.toDouble(), rows.toDouble());
@@ -141,47 +221,60 @@ class RectShape extends BoardShape {
   Map<String, dynamic> toJson() => {'t': 'rect'};
 }
 
-/// A point or direction in the cube's 3D space.
-class _V3 {
-  const _V3(this.x, this.y, this.z);
-  final double x, y, z;
-
-  _V3 operator +(_V3 o) => _V3(x + o.x, y + o.y, z + o.z);
-  _V3 operator -(_V3 o) => _V3(x - o.x, y - o.y, z - o.z);
-  _V3 operator *(double k) => _V3(x * k, y * k, z * k);
-
-  bool same(_V3 o) =>
-      (x - o.x).abs() < 1e-9 &&
-      (y - o.y).abs() < 1e-9 &&
-      (z - o.z).abs() < 1e-9;
+/// One face of the cube: where its local cell (0, 0) corner is, and the 3D
+/// directions of its local "right" (columns) and "down" (rows).
+class _Face {
+  const _Face(this.normal, this.corner, this.right, this.down);
+  final V3 normal;
+  final V3 corner; // in multiples of n
+  final V3 right;
+  final V3 down;
 }
 
-/// The three visible faces of an n x n x n cube, seen from the corner.
+/// Arrows on the faces of an n x n x n cube filling [0, n]^3.
 ///
-/// The cube fills [0, n]^3. The visible faces are top (z = n), left (y = n)
-/// and right (x = n); they meet at the front corner, drawn in the middle of
-/// the hexagon outline. Cells are stored face after face: rows 0..n-1 are
-/// the top face, n..2n-1 the left face, 2n..3n-1 the right face.
+/// Faces are stored one after another, n rows each: 0 top (+z), 1 left (+y),
+/// 2 right (+x) - the three seen from the front corner - then, when
+/// [allSides] is set, 3 bottom (-z), 4 back-left (-y) and 5 back-right (-x).
 ///
-/// On each face "up" on screen is up the face: on the side faces local rows
-/// run down the face, on the top face they run from the back corner towards
-/// the left side.
+/// A lane that runs off a face continues over the edge onto the neighbouring
+/// face, heading straight away from the face it came from. At the next edge
+/// it flies off the cube. Without [allSides], the three hidden faces are
+/// missing, so a lane heading onto one of them leaves the cube there.
 class CubeShape extends BoardShape {
-  const CubeShape(this.n);
+  const CubeShape(this.n, {this.allSides = false});
 
   /// Cells along each edge of the cube.
   final int n;
 
-  static const int top = 0, left = 1, right = 2;
+  /// Arrows on all six sides (the player turns the cube to see them all).
+  final bool allSides;
 
-  static const _normals = [_V3(0, 0, 1), _V3(0, 1, 0), _V3(1, 0, 0)];
+  static const int top = 0, left = 1, right = 2;
+  static const int bottom = 3, backLeft = 4, backRight = 5;
+
+  static const _faces = [
+    _Face(V3(0, 0, 1), V3(0, 0, 1), V3(1, 0, 0), V3(0, 1, 0)),
+    _Face(V3(0, 1, 0), V3(0, 1, 1), V3(1, 0, 0), V3(0, 0, -1)),
+    _Face(V3(1, 0, 0), V3(1, 1, 1), V3(0, -1, 0), V3(0, 0, -1)),
+    _Face(V3(0, 0, -1), V3(0, 1, 0), V3(1, 0, 0), V3(0, -1, 0)),
+    _Face(V3(0, -1, 0), V3(1, 0, 1), V3(-1, 0, 0), V3(0, 0, -1)),
+    _Face(V3(-1, 0, 0), V3(0, 0, 1), V3(0, 1, 0), V3(0, 0, -1)),
+  ];
 
   @override
-  int get rows => 3 * n;
+  int get faceCount => allSides ? 6 : 3;
+
+  @override
+  int get rows => faceCount * n;
   @override
   int get cols => n;
 
+  @override
   int faceOf(Cell c) => c.row ~/ n;
+
+  @override
+  V3 normalOf(int face) => _faces[face].normal;
 
   @override
   Iterable<Cell> get cells sync* {
@@ -197,41 +290,35 @@ class CubeShape extends BoardShape {
       c.row >= 0 && c.row < rows && c.col >= 0 && c.col < cols;
 
   /// 3D direction of local [d] on [face].
-  _V3 _vec(int face, Dir d) => switch ((face, d)) {
-        (top, Dir.right) => const _V3(1, 0, 0),
-        (top, Dir.left) => const _V3(-1, 0, 0),
-        (top, Dir.down) => const _V3(0, 1, 0),
-        (top, Dir.up) => const _V3(0, -1, 0),
-        (left, Dir.right) => const _V3(1, 0, 0),
-        (left, Dir.left) => const _V3(-1, 0, 0),
-        (left, Dir.down) => const _V3(0, 0, -1),
-        (left, Dir.up) => const _V3(0, 0, 1),
-        (right, Dir.right) => const _V3(0, -1, 0),
-        (right, Dir.left) => const _V3(0, 1, 0),
-        (right, Dir.down) => const _V3(0, 0, -1),
-        _ => const _V3(0, 0, 1), // (right, up)
-      };
-
-  /// 3D centre of a cell on the cube's surface.
-  _V3 _point(Cell c) {
-    final face = faceOf(c);
-    final r = c.row % n + .5;
-    final col = c.col + .5;
-    return switch (face) {
-      top => _V3(col, r, n.toDouble()),
-      left => _V3(col, n.toDouble(), n - r),
-      _ => _V3(n.toDouble(), n - col, n - r),
+  V3 _vec(int face, Dir d) {
+    final f = _faces[face];
+    return switch (d) {
+      Dir.right => f.right,
+      Dir.left => f.right * -1,
+      Dir.down => f.down,
+      Dir.up => f.down * -1,
     };
   }
 
+  @override
+  V3 center3(Cell c) {
+    final f = _faces[faceOf(c)];
+    return f.corner * n.toDouble() +
+        f.right * (c.col + .5) +
+        f.down * (c.row % n + .5);
+  }
+
+  @override
+  V3 edge3(Cell c, Dir d) => center3(c) + _vec(faceOf(c), d) * .5;
+
   /// Cell on [face] whose centre is the 3D point [p].
-  Cell _cellAt(int face, _V3 p) {
-    final (r, c) = switch (face) {
-      top => (p.y - .5, p.x - .5),
-      left => (n - p.z - .5, p.x - .5),
-      _ => (n - p.z - .5, n - p.y - .5),
-    };
-    return Cell(face * n + r.round(), c.round());
+  Cell _cellAt(int face, V3 p) {
+    final f = _faces[face];
+    final rel = p - f.corner * n.toDouble();
+    return Cell(
+      face * n + (rel.dot(f.down) - .5).round(),
+      (rel.dot(f.right) - .5).round(),
+    );
   }
 
   @override
@@ -240,17 +327,35 @@ class CubeShape extends BoardShape {
     if (same != null) return (same, d);
 
     // Over the edge: continue on the face whose normal is the direction of
-    // travel, if that face is one of the visible three.
+    // travel, heading away from the face we left.
     final face = faceOf(c);
     final travel = _vec(face, d);
-    final next = _normals.indexWhere((nrm) => nrm.same(travel));
-    if (next < 0) return null; // Over the outline, off the cube.
+    final next = _faces.indexWhere((f) => f.normal.same(travel));
+    if (next >= faceCount) return null; // A missing face: off the cube.
 
-    final normal = _normals[face];
-    final p = _point(c) + travel * .5 - normal * .5;
+    final normal = _faces[face].normal;
+    final p = center3(c) + travel * .5 - normal * .5;
     final newTravel = normal * -1;
     final newDir = Dir.values.firstWhere((x) => _vec(next, x).same(newTravel));
     return (_cellAt(next, p), newDir);
+  }
+
+  @override
+  Iterable<(Cell, Dir)> laneSteps(Cell from, Dir d) sync* {
+    var face = faceOf(from);
+    var crossed = false;
+    var next = ahead(from, d);
+    while (next != null) {
+      final nextFace = faceOf(next.$1);
+      if (nextFace != face) {
+        // One edge is taken; at the second the arrow flies off the cube.
+        if (crossed) return;
+        crossed = true;
+        face = nextFace;
+      }
+      yield next;
+      next = ahead(next.$1, next.$2);
+    }
   }
 
   @override
@@ -267,33 +372,48 @@ class CubeShape extends BoardShape {
     return math.min(math.min(r, n - 1 - r), math.min(c.col, n - 1 - c.col));
   }
 
-  static const _cos30 = 0.8660254037844386;
-
-  /// Isometric projection, shifted so the hexagon starts at (0, 0). Every
-  /// cube axis projects to unit length, so one cell stays one cell long.
-  Pt _project(_V3 p) =>
-      Pt((p.x - p.y) * _cos30 + n * _cos30, (p.x + p.y) * .5 - p.z + n);
+  /// Screen units per cube unit. Chosen so every cube axis is one cell long
+  /// in the isometric view.
+  static const _scale = 1.2247448713915890;
 
   @override
-  Pt center(Cell c) => _project(_point(c));
+  Pt project(V3 p, [CubeView view = CubeView.iso]) {
+    final half = n / 2;
+    final rel = p - V3(half, half, half);
+    final (w, h) = extent;
+    return Pt(
+      rel.dot(view.right) * _scale + w / 2,
+      -rel.dot(view.up) * _scale + h / 2,
+    );
+  }
 
   @override
-  Pt edgePoint(Cell c, Dir d) => _project(_point(c) + _vec(faceOf(c), d) * .5);
+  (double, double) get extent =>
+      allSides ? (2.2 * n, 2.2 * n) : (math.sqrt(3) * n, 2.0 * n);
 
   @override
-  (double, double) get extent => (2 * n * _cos30, 2.0 * n);
-
-  @override
-  List<List<Pt>> get faces {
+  List<List<V3>> get faceCorners {
     final m = n.toDouble();
-    List<Pt> quad(List<_V3> corners) => [for (final p in corners) _project(p)];
     return [
-      quad([_V3(0, 0, m), _V3(m, 0, m), _V3(m, m, m), _V3(0, m, m)]),
-      quad([_V3(0, m, m), _V3(m, m, m), _V3(m, m, 0), _V3(0, m, 0)]),
-      quad([_V3(m, m, m), _V3(m, 0, m), _V3(m, 0, 0), _V3(m, m, 0)]),
+      for (var i = 0; i < faceCount; i++)
+        () {
+          final f = _faces[i];
+          final o = f.corner * m;
+          return [
+            o,
+            o + f.right * m,
+            o + f.right * m + f.down * m,
+            o + f.down * m,
+          ];
+        }(),
     ];
   }
 
   @override
-  Map<String, dynamic> toJson() => {'t': 'cube', 'n': n};
+  bool faceVisible(int face, CubeView view) =>
+      _faces[face].normal.dot(view.toViewer) > 1e-6;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'t': 'cube', 'n': n, if (allSides) 'all': true};
 }
