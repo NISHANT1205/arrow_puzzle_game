@@ -58,15 +58,14 @@ class LevelSelectScreen extends ConsumerWidget {
                     },
               child: Stack(
                 children: [
-                  if (LevelGenerator.tierFor(level) != LevelTier.normal)
+                  if (LevelTier.forLevel(level) != LevelTier.normal)
                     Positioned(
                       top: 6,
                       right: 6,
                       child: Icon(
                         Icons.local_fire_department_rounded,
                         size: 16,
-                        color:
-                            TierBadge.colorFor(LevelGenerator.tierFor(level)),
+                        color: TierBadge.colorFor(LevelTier.forLevel(level)),
                       ),
                     ),
                   Center(

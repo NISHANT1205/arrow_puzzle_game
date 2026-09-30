@@ -30,6 +30,7 @@ flutter:
 
   assets:
     - assets/icon/
+    - assets/levels/
 
 flutter_launcher_icons:
   android: true

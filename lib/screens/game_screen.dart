@@ -1,13 +1,15 @@
 // lib/screens/game_screen.dart
 
-import 'package:flutter/foundation.dart' show compute;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/level_generator.dart';
 import '../engine/puzzle_board.dart';
+import '../models/level.dart';
 import '../services/audio_service.dart';
 import '../services/haptic_service.dart';
+import '../services/level_repository.dart';
 import '../state/game_controller.dart';
 import '../state/progress_provider.dart';
 import '../widgets/arrow_board_view.dart';
@@ -31,6 +33,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   final TransformationController _zoom = TransformationController();
   bool _revived = false;
   bool _dialogOpen = false;
+  Timer? _resultFallback;
+  String? _loadError;
 
   @override
   void initState() {
@@ -38,11 +42,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _load(widget.levelNumber);
   }
 
-  /// Builds the level on a background isolate: big Super Hard boards take a
-  /// moment to generate and must not freeze the UI.
   Future<void> _load(int number) async {
     _loadingLevel = number;
-    final level = await compute(LevelGenerator.generate, number);
+    _loadError = null;
+    final Level level;
+    try {
+      level = await LevelRepository.instance.level(number);
+    } catch (e) {
+      if (mounted) setState(() => _loadError = '$e');
+      return;
+    }
     if (!mounted || _loadingLevel != number) return;
     setState(() {
       _current?.dispose();
@@ -54,6 +63,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   @override
   void dispose() {
+    _resultFallback?.cancel();
     _current?.dispose();
     _zoom.dispose();
     super.dispose();
@@ -70,10 +80,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (_game.status == GameStatus.won) {
       ref.read(progressProvider.notifier).completeLevel(_game.level.number);
     }
+    if (_game.status != GameStatus.playing) {
+      // The board reports when its animations end; this timer makes sure
+      // the result shows even if that report never comes.
+      _resultFallback?.cancel();
+      _resultFallback = Timer(const Duration(milliseconds: 1800), _onSettled);
+    }
   }
 
   void _onSettled() {
-    if (!mounted || _dialogOpen) return;
+    if (!mounted || _dialogOpen || _current == null) return;
     switch (_game.status) {
       case GameStatus.won:
         AudioService().playLevelComplete();
@@ -88,6 +104,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   Future<void> _showResult({required bool won}) async {
     _dialogOpen = true;
+    _resultFallback?.cancel();
     final action = await showGeneralDialog<_ResultAction>(
       context: context,
       barrierDismissible: false,
@@ -97,7 +114,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         won: won,
         level: _game.level.number,
         mistakes: _game.mistakes,
-        canRevive: !won && !_revived,
+        canRevive: !won && !_revived && !_game.stuck,
       ),
       transitionBuilder: (_, animation, __, child) => ScaleTransition(
         scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
@@ -162,8 +179,25 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 onBack: () => Navigator.of(context).pop(),
                 onRestart: () {},
               ),
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
+              Expanded(
+                child: Center(
+                  child: _loadError == null
+                      ? const CircularProgressIndicator()
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Could not load this level.'),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: () {
+                                setState(() => _loadError = null);
+                                _load(_loadingLevel);
+                              },
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ],
           ),
@@ -262,8 +296,8 @@ class _TopBar extends StatelessWidget {
                     letterSpacing: .3,
                   ),
                 ),
-                if (LevelGenerator.tierFor(level) != LevelTier.normal)
-                  TierBadge(tier: LevelGenerator.tierFor(level)),
+                if (LevelTier.forLevel(level) != LevelTier.normal)
+                  TierBadge(tier: LevelTier.forLevel(level)),
               ],
             ),
           ),

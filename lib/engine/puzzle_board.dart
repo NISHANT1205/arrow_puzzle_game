@@ -124,6 +124,7 @@ class PuzzleBoard {
   BoardStats analyze() {
     final copy = PuzzleBoard(rows: rows, cols: cols, arrows: arrows);
     final total = copy.count;
+    final cells = copy._occupancy.length;
     final initialFree = copy.freeArrows().length;
     var layers = 0;
     var narrowest = total;
@@ -132,6 +133,7 @@ class PuzzleBoard {
       if (free.isEmpty) {
         return BoardStats(
           arrows: total,
+          cells: cells,
           initialFree: initialFree,
           layers: layers,
           narrowest: narrowest,
@@ -146,6 +148,7 @@ class PuzzleBoard {
     }
     return BoardStats(
       arrows: total,
+      cells: cells,
       initialFree: initialFree,
       layers: layers,
       narrowest: narrowest,
@@ -175,6 +178,7 @@ class PuzzleBoard {
 class BoardStats {
   const BoardStats({
     required this.arrows,
+    required this.cells,
     required this.initialFree,
     required this.layers,
     required this.narrowest,
@@ -182,6 +186,9 @@ class BoardStats {
   });
 
   final int arrows;
+
+  /// Cells covered by arrows: long winding arrows are harder to trace.
+  final int cells;
 
   /// Arrows that can leave at the very start. Fewer means more traps.
   final int initialFree;
@@ -199,7 +206,13 @@ class BoardStats {
   /// Share of arrows that are traps at the start (0 = all free).
   double get trapRatio => arrows == 0 ? 0 : 1 - initialFree / arrows;
 
+  /// One number for "how hard is this board": more arrow to trace, longer
+  /// chains of moves that must happen in order, and fewer safe first moves
+  /// all make it harder. Bundled levels strictly increase in this score.
+  double get score => cells * (1 + .2 * layers) * (.6 + trapRatio);
+
   @override
   String toString() => 'arrows=$arrows free=$initialFree layers=$layers '
-      'narrowest=$narrowest solvable=$solvable';
+      'narrowest=$narrowest score=${score.toStringAsFixed(1)} '
+      'solvable=$solvable';
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/level_generator.dart';
+import '../models/level.dart';
 import '../state/game_controller.dart';
 import '../state/progress_provider.dart';
 import '../widgets/arrow_board_view.dart';
@@ -20,7 +21,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   // A small real puzzle used as the logo.
-  final GameController _preview = GameController(LevelGenerator.generate(6));
+  final GameController _preview = GameController(_logoLevel());
+
+  static Level _logoLevel() {
+    final config = LevelGenerator.configAt(.1);
+    return LevelGenerator.toLevel(0, config, LevelGenerator.build(config, 6));
+  }
 
   @override
   void dispose() {

@@ -16,8 +16,8 @@ import '../models/arrow_path.dart';
 import '../models/level.dart';
 import 'puzzle_board.dart';
 
-/// Difficulty badge shown on a level, like the "Hard" / "Super Hard" levels
-/// of the original game.
+/// Difficulty badge shown on a level. Levels only ever get harder, so the
+/// badge marks how far along the curve a level is.
 enum LevelTier {
   normal('Normal'),
   hard('Hard'),
@@ -25,6 +25,12 @@ enum LevelTier {
 
   const LevelTier(this.label);
   final String label;
+
+  static LevelTier forLevel(int number) {
+    if (number >= 200) return LevelTier.superHard;
+    if (number >= 100) return LevelTier.hard;
+    return LevelTier.normal;
+  }
 }
 
 /// Size and density knobs for one level.
@@ -37,8 +43,7 @@ class LevelConfig {
     required this.fill,
     required this.straightness,
     required this.aimAcross,
-    required this.candidates,
-    required this.difficultyWeight,
+    required this.fillHoles,
   });
 
   final int rows;
@@ -59,100 +64,66 @@ class LevelConfig {
   /// which creates longer chains of "move that one first".
   final double aimAcross;
 
-  /// Boards built per level; the best-scoring one is kept.
-  final int candidates;
-
-  /// How much the candidate score favours hard boards over packed ones.
-  final double difficultyWeight;
+  /// Grow arrow tails into leftover holes after placement (off for the
+  /// tutorial levels so their arrows stay short).
+  final bool fillHoles;
 }
 
 class LevelGenerator {
   const LevelGenerator._();
-
-  /// Every 5th level is Hard and every 10th is Super Hard.
-  static LevelTier tierFor(int number) {
-    if (number >= 10 && number % 10 == 0) return LevelTier.superHard;
-    if (number >= 5 && number % 5 == 0) return LevelTier.hard;
-    return LevelTier.normal;
-  }
 
   /// Largest board the generator will build. Big boards are played with
   /// pinch-to-zoom, like the late levels of the original.
   static const int maxCols = 22;
   static const int maxRows = 30;
 
-  /// Difficulty curve: boards grow, arrows get longer, the grid gets denser
-  /// and candidates are picked more for difficulty as the level number
-  /// rises. Hard and Super Hard levels jump ahead of the curve.
-  static LevelConfig configFor(int number) {
-    final n = max(1, number);
-    final tier = tierFor(n);
-    final int boost = switch (tier) {
-      LevelTier.normal => 0,
-      LevelTier.hard => 2,
-      LevelTier.superHard => 4,
-    };
-    // Fast growth for the first 40 levels, then slowly up to the maximum.
-    final int base = min(4 + (n - 1) ~/ 4, 14) + min(max(0, n - 40) ~/ 30, 4);
-    final cols = min(base + boost, maxCols);
+  /// Knobs for a point on the difficulty curve. [t] runs from 0 (first
+  /// level) to 1 (hardest). [extraCols] makes the board bigger than the
+  /// curve says; the level builder uses it when a board size runs out of
+  /// harder puzzles.
+  static LevelConfig configAt(double t, {int extraCols = 0}) {
+    t = t.clamp(0.0, 1.0);
+    final cols = min(4 + (t * 18).floor() + extraCols, maxCols);
     final rows = min(cols + 1 + cols ~/ 3, maxRows);
-    final ramp = min(n / 100, 1.0); // 0 at level 1, 1 from level 100.
+    final tutorial = t < .01;
     return LevelConfig(
       rows: rows,
       cols: cols,
       minLength: 2,
-      maxLength: min(3 + n ~/ 3, 14) + boost,
-      fill: switch (tier) {
-        LevelTier.normal => min(0.62 + n * 0.008, 0.94),
-        LevelTier.hard => 0.95,
-        LevelTier.superHard => 0.97,
-      },
-      straightness: n < 10 ? 0.7 : 0.55 - ramp * .1,
-      aimAcross: n < 5 ? 0 : 0.25 + ramp * .35 + boost * .05,
-      candidates: switch (tier) {
-        LevelTier.normal => 6,
-        LevelTier.hard => 10,
-        LevelTier.superHard => 16,
-      },
-      difficultyWeight: n < 5
-          ? 0
-          : switch (tier) {
-              LevelTier.normal => 0.4 + ramp * 0.6,
-              LevelTier.hard => 1.5,
-              LevelTier.superHard => 2.5,
-            },
+      maxLength: 3 + (t * 13).round(),
+      fill: tutorial ? .6 : min(.7 + t * .6, .97),
+      straightness: .7 - t * .25,
+      aimAcross: tutorial ? 0 : .2 + t * .55,
+      fillHoles: !tutorial,
     );
   }
 
-  /// Higher is better: packed boards with long dependency chains and few
-  /// arrows that are free at the start.
-  static double _score(LevelConfig config, List<ArrowPath> arrows) {
-    final filled = arrows.fold<int>(0, (sum, a) => sum + a.length);
-    final fill = filled / (config.rows * config.cols);
-    if (config.difficultyWeight == 0) return fill;
-    final stats =
-        PuzzleBoard(rows: config.rows, cols: config.cols, arrows: arrows)
-            .analyze();
-    final depth = stats.layers / sqrt(max(1, stats.arrows));
-    return fill + config.difficultyWeight * (depth * .5 + stats.trapRatio);
-  }
-
+  /// Level used after the bundled levels run out: the hardest settings,
+  /// best of several tries.
   static Level generate(int number) {
-    final config = configFor(number);
+    final config = configAt(1);
     List<ArrowPath> best = const [];
     var bestScore = double.negativeInfinity;
-    for (var attempt = 0; attempt < config.candidates; attempt++) {
-      final rng = Random(number * 7919 + attempt * 104729 + 17);
-      final arrows = _build(config, rng);
-      final score = _score(config, arrows);
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final arrows = build(config, number * 7919 + attempt * 104729 + 17);
+      final score = difficultyOf(config, arrows).score;
       if (score > bestScore) {
         best = arrows;
         bestScore = score;
       }
     }
+    return toLevel(number, config, best);
+  }
 
-    // Renumber in a shuffled order so ids don't leak the solution.
-    final shuffled = [...best]..shuffle(Random(number));
+  /// Difficulty numbers for a set of arrows on [config]'s board.
+  static BoardStats difficultyOf(LevelConfig config, List<ArrowPath> arrows) =>
+      PuzzleBoard(rows: config.rows, cols: config.cols, arrows: arrows)
+          .analyze();
+
+  /// Wraps [arrows] as a playable level, renumbered in a shuffled order so
+  /// ids don't leak the solution.
+  static Level toLevel(int number, LevelConfig config, List<ArrowPath> arrows) {
+    final shuffled = [...arrows]..shuffle(Random(number));
     return Level(
       number: number,
       rows: config.rows,
@@ -163,6 +134,10 @@ class LevelGenerator {
       ],
     );
   }
+
+  /// One board for [config], fully determined by [seed].
+  static List<ArrowPath> build(LevelConfig config, int seed) =>
+      _build(config, Random(seed));
 
   /// One candidate board, arrows in placement order.
   static List<ArrowPath> _build(LevelConfig config, Random rng) {
@@ -220,7 +195,7 @@ class LevelGenerator {
     }
 
     // Tutorial levels keep their short arrows.
-    if (config.difficultyWeight > 0) {
+    if (config.fillHoles) {
       _extendTails(board, arrows, rng, config.maxLength + 4);
     }
     return arrows;

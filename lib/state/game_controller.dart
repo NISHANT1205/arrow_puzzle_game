@@ -25,6 +25,9 @@ class GameController extends ChangeNotifier {
   int hintsUsed = 0;
   GameStatus status = GameStatus.playing;
 
+  /// True when the game ended because no arrow could move any more.
+  bool stuck = false;
+
   /// Arrow currently highlighted by a hint.
   int? hintArrowId;
 
@@ -41,6 +44,7 @@ class GameController extends ChangeNotifier {
     mistakes = 0;
     hintsUsed = 0;
     hintArrowId = null;
+    stuck = false;
     status = GameStatus.playing;
   }
 
@@ -54,7 +58,14 @@ class GameController extends ChangeNotifier {
     moves++;
     if (result is Escaped) {
       if (hintArrowId == arrow.id) hintArrowId = null;
-      if (board.isCleared) status = GameStatus.won;
+      if (board.isCleared) {
+        status = GameStatus.won;
+      } else if (board.freeArrows().isEmpty) {
+        // Never happens with checked levels, but a board with no way out
+        // must end the game instead of leaving the player stuck.
+        stuck = true;
+        status = GameStatus.lost;
+      }
     } else {
       mistakes++;
       lives--;
@@ -88,7 +99,7 @@ class GameController extends ChangeNotifier {
 
   /// Gives one more life after losing, so the player can keep going.
   void revive() {
-    if (status != GameStatus.lost) return;
+    if (status != GameStatus.lost || stuck) return;
     lives = 1;
     status = GameStatus.playing;
     notifyListeners();
