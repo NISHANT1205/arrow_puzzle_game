@@ -89,7 +89,7 @@ class Logo extends StatelessWidget {
       color: c,
       letterSpacing: 2,
       shadows: const [
-        Shadow(color: Colors.black54, offset: Offset(0, 4), blurRadius: 6),
+        Shadow(color: Color(0x33000000), offset: Offset(0, 3), blurRadius: 4),
       ],
     );
     return FittedBox(
@@ -97,8 +97,8 @@ class Logo extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('SCREW ', style: s(Colors.white)),
-          Text('JAM', style: s(Palette.accent)),
+          Text('SCREW ', style: s(Palette.ink)),
+          Text('JAM', style: s(const Color(0xFFFF9800))),
         ],
       ),
     );

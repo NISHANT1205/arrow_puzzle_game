@@ -26,12 +26,26 @@ class ScrewJamApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          brightness: Brightness.dark,
+          brightness: Brightness.light,
           colorScheme: ColorScheme.fromSeed(
-            seedColor: Palette.accent,
-            brightness: Brightness.dark,
+            seedColor: Palette.blue,
+            brightness: Brightness.light,
           ),
           scaffoldBackgroundColor: Palette.bgBottom,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Palette.bgTop,
+            foregroundColor: Palette.ink,
+            elevation: 0,
+            titleTextStyle: TextStyle(
+              color: Palette.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          textTheme: ThemeData.light().textTheme.apply(
+            bodyColor: Palette.ink,
+            displayColor: Palette.ink,
+          ),
         ),
         home: const SplashScreen(),
       ),

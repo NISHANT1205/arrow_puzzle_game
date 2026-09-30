@@ -15,10 +15,7 @@ class ProfileScreen extends StatelessWidget {
     final p = app.progress;
     final threeStar = p.stars.values.where((s) => s == 3).length;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        backgroundColor: Palette.bgTop,
-      ),
+      appBar: AppBar(title: const Text('Profile')),
       body: GameBackground(
         child: ListView(
           padding: const EdgeInsets.all(20),
@@ -29,7 +26,7 @@ class ProfileScreen extends StatelessWidget {
               child: Text(
                 user.displayName,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: Palette.ink,
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
                 ),
@@ -41,7 +38,7 @@ class ProfileScreen extends StatelessWidget {
                   padding: EdgeInsets.only(top: 4),
                   child: Text(
                     'Playing as guest. Sign up to keep a named profile.',
-                    style: TextStyle(color: Colors.white54),
+                    style: TextStyle(color: Palette.inkSoft),
                   ),
                 ),
               ),
@@ -120,7 +117,9 @@ class _Stat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: Palette.card,
+        border: Border.all(color: Palette.cardBorder),
+        boxShadow: Palette.softShadow(0.6),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -136,7 +135,7 @@ class _Stat extends StatelessWidget {
                   child: Text(
                     value,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: Palette.ink,
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                     ),
@@ -145,7 +144,7 @@ class _Stat extends StatelessWidget {
                 Text(
                   label,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  style: const TextStyle(color: Palette.inkSoft, fontSize: 12),
                 ),
               ],
             ),

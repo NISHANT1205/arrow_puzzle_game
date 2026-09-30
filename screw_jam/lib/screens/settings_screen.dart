@@ -10,10 +10,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: Palette.bgTop,
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: GameBackground(
         child: ListView(
           padding: const EdgeInsets.all(16),

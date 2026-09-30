@@ -105,9 +105,10 @@ class CoinChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black26,
+        color: Palette.card,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Palette.accent.withValues(alpha: 0.6)),
+        boxShadow: Palette.softShadow(0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -122,7 +123,7 @@ class CoinChip extends StatelessWidget {
             '$coins',
             key: const Key('coins'),
             style: const TextStyle(
-              color: Colors.white,
+              color: Palette.ink,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),

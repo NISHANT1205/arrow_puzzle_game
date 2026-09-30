@@ -70,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
         prefixIcon: Icon(icon),
         suffixIcon: suffix,
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.08),
+        fillColor: Palette.field,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -93,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 6),
                     const Text(
                       'Unscrew. Sort. Relax.',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(color: Palette.inkSoft),
                     ),
                     const SizedBox(height: 24),
                     _card(),
@@ -118,9 +118,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
+        color: Palette.card,
+        boxShadow: Palette.softShadow(1.2),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: Palette.cardBorder),
       ),
       child: Form(
         key: _form,
@@ -150,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
             if (_signUp) ...[
               const Text(
                 'Pick an avatar',
-                style: TextStyle(color: Colors.white70),
+                style: TextStyle(color: Palette.inkSoft),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -235,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const Text(
               'Accounts are saved on this device only.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white38, fontSize: 12),
+              style: TextStyle(color: Palette.inkSoft, fontSize: 12),
             ),
           ],
         ),

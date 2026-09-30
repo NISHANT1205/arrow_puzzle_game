@@ -232,14 +232,14 @@ class _GameScreenState extends State<GameScreen> {
                         key: const Key('back'),
                         icon: const Icon(
                           Icons.arrow_back_rounded,
-                          color: Colors.white,
+                          color: Palette.ink,
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
                       Text(
                         'Level ${widget.number}',
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Palette.ink,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
@@ -287,18 +287,21 @@ class _GameScreenState extends State<GameScreen> {
                         key: const Key('undo'),
                         icon: Icons.undo_rounded,
                         label: 'Undo',
+                        color: Palette.purple,
                         onTap: _ctrl.canUndo && !_ctrl.isWon ? _undo : null,
                       ),
                       _Tool(
                         key: const Key('hint'),
                         icon: Icons.lightbulb_rounded,
                         label: 'Hint ${GameScreen.hintCost}',
+                        color: const Color(0xFFF5A300),
                         onTap: _ctrl.isWon ? null : _hint,
                       ),
                       _Tool(
                         key: const Key('slot'),
                         icon: Icons.add_box_rounded,
                         label: 'Slot ${GameScreen.slotCost}',
+                        color: Palette.green,
                         onTap: _ctrl.canAddSlot && !_ctrl.isWon
                             ? _addSlot
                             : null,
@@ -307,6 +310,7 @@ class _GameScreenState extends State<GameScreen> {
                         key: const Key('restart'),
                         icon: Icons.refresh_rounded,
                         label: 'Restart',
+                        color: Palette.blue,
                         onTap: _ctrl.isWon ? null : _restart,
                       ),
                     ],
@@ -325,7 +329,14 @@ class _Tool extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  const _Tool({super.key, required this.icon, required this.label, this.onTap});
+  final Color color;
+  const _Tool({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -341,16 +352,21 @@ class _Tool extends StatelessWidget {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white24),
+                color: Palette.card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Palette.cardBorder),
+                boxShadow: Palette.softShadow(0.6),
               ),
-              child: Icon(icon, color: Colors.white, size: 28),
+              child: Icon(icon, color: color, size: 28),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              style: const TextStyle(
+                color: Palette.inkSoft,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -382,10 +398,11 @@ class _ResultDialog extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF5E3B8C), Palette.bgTop],
+            colors: [Colors.white, Color(0xFFFFF6E0)],
           ),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Palette.accent, width: 3),
+          boxShadow: Palette.softShadow(1.5),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -396,7 +413,7 @@ class _ResultDialog extends StatelessWidget {
               key: const Key('result-title'),
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.white,
+                color: Palette.ink,
                 fontSize: 26,
                 fontWeight: FontWeight.w900,
               ),
@@ -415,7 +432,9 @@ class _ResultDialog extends StatelessWidget {
                       child: Icon(
                         Icons.star_rounded,
                         size: i == 1 ? 64 : 50,
-                        color: i < stars! ? Palette.accent : Colors.white24,
+                        color: i < stars!
+                            ? Palette.accent
+                            : const Color(0xFFE4E0EE),
                       ),
                     ),
                 ],
@@ -425,7 +444,7 @@ class _ResultDialog extends StatelessWidget {
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, fontSize: 16),
+              style: const TextStyle(color: Palette.inkSoft, fontSize: 16),
             ),
             const SizedBox(height: 20),
             ...actions,

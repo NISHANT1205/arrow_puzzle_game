@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/common.dart';
+import '../widgets/board_view.dart';
 import '../widgets/palette.dart';
 import '../widgets/screw_painter.dart';
 import 'game_screen.dart';
@@ -51,7 +52,7 @@ class HomeScreen extends StatelessWidget {
                                 user.displayName,
                                 key: const Key('display-name'),
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Palette.ink,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
                                 ),
@@ -66,7 +67,7 @@ class HomeScreen extends StatelessWidget {
                                   Text(
                                     ' ${p.totalStars}',
                                     style: const TextStyle(
-                                      color: Colors.white70,
+                                      color: Palette.inkSoft,
                                     ),
                                   ),
                                 ],
@@ -82,7 +83,7 @@ class HomeScreen extends StatelessWidget {
                       key: const Key('settings'),
                       icon: const Icon(
                         Icons.settings_rounded,
-                        color: Colors.white,
+                        color: Palette.ink,
                       ),
                       onPressed: () => Navigator.push(
                         context,
@@ -103,7 +104,7 @@ class HomeScreen extends StatelessWidget {
                   label: 'LEVEL ${app.currentLevel}',
                   icon: Icons.play_arrow_rounded,
                   height: 72,
-                  color: const Color(0xFF43A047),
+                  color: Palette.green,
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -116,7 +117,7 @@ class HomeScreen extends StatelessWidget {
                   key: const Key('levels'),
                   label: 'ALL LEVELS',
                   icon: Icons.grid_view_rounded,
-                  color: const Color(0xFF1E88E5),
+                  color: Palette.blue,
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -130,14 +131,14 @@ class HomeScreen extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: completed / total,
                     minHeight: 10,
-                    backgroundColor: Colors.white12,
+                    backgroundColor: Colors.white,
                     color: Palette.accent,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   '$completed / $total levels completed',
-                  style: const TextStyle(color: Colors.white70),
+                  style: const TextStyle(color: Palette.inkSoft),
                 ),
               ],
             ),
@@ -168,36 +169,78 @@ class _SpinningScrewsState extends State<_SpinningScrews>
     super.dispose();
   }
 
+  // A tiny diorama: plates on a pegboard held by slowly turning bolts.
+  static const _cell = 52.0;
+  static const _plates = [
+    (0, 0, 3, 1, 1),
+    (2, 0, 1, 3, 0),
+    (0, 1, 2, 2, 2),
+    (3, 1, 2, 2, 3),
+  ];
+  static const _bolts = [
+    (0, 0, 0),
+    (2, 0, 1),
+    (2, 2, 3),
+    (0, 2, 2),
+    (1, 1, 4),
+    (4, 1, 5),
+    (3, 2, 6),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, _) => Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (var i = 0; i < 5; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Transform.translate(
-                offset: Offset(
-                  0,
-                  8 *
-                      (i.isEven ? 1 : -1) *
-                      (0.5 - (_c.value * 2 % 1 - 0.5).abs()),
-                ),
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: CustomPaint(
-                    painter: ScrewPainter(
-                      Palette.screw(i),
-                      angle: _c.value * 6.283 * (i.isEven ? 1 : -1),
-                    ),
-                  ),
-                ),
+    const w = _cell * 5, h = _cell * 3;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          colors: [Palette.woodMid, Palette.woodDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: Palette.softShadow(1.3),
+      ),
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: CustomPaint(painter: WoodBoardPainter(5, 3)),
               ),
             ),
-        ],
+            for (final (x, y, pw, ph, c) in _plates)
+              Positioned(
+                left: x * _cell,
+                top: y * _cell,
+                width: pw * _cell,
+                height: ph * _cell,
+                child: CustomPaint(
+                  painter: PlatePainter(Palette.plate(c), const [], _cell),
+                ),
+              ),
+            AnimatedBuilder(
+              animation: _c,
+              builder: (_, _) => Stack(
+                children: [
+                  for (final (x, y, c) in _bolts)
+                    Positioned(
+                      left: (x + 0.15) * _cell,
+                      top: (y + 0.15) * _cell,
+                      child: ScrewIcon(
+                        color: Palette.screw(c),
+                        size: _cell * 0.7,
+                        angle: _c.value * 6.283 * (c.isEven ? 1 : -1),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

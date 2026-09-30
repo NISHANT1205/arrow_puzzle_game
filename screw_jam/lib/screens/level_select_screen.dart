@@ -42,7 +42,6 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
           'Levels',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        backgroundColor: Palette.bgTop,
         actions: [
           CoinChip(coins: p.coins),
           const SizedBox(width: 12),
@@ -65,12 +64,10 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
             final stars = p.stars[n] ?? 0;
             final boss = n % 10 == 0;
             final color = !unlocked
-                ? Colors.white10
+                ? const Color(0xFFE2DEEC)
                 : boss
                 ? const Color(0xFFD81B60)
-                : (stars > 0
-                      ? const Color(0xFF43A047)
-                      : const Color(0xFF1E88E5));
+                : (stars > 0 ? Palette.green : Palette.blue);
             return GestureDetector(
               key: Key('level-$n'),
               onTap: unlocked
@@ -109,7 +106,7 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                           )
                         : const Icon(
                             Icons.lock_rounded,
-                            color: Colors.white38,
+                            color: Palette.inkSoft,
                             size: 20,
                           ),
                     if (unlocked)
