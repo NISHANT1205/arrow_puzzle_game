@@ -116,7 +116,7 @@ class BoardView extends StatelessWidget {
       ];
       final painter = CustomPaint(
         size: rect.size,
-        painter: PlatePainter(Palette.plate(p), holes, cell),
+        painter: PlatePainter(Palette.plate(p), holes, cell, seed: p),
       );
       if (state.plateAlive[p]) {
         out.add(Positioned.fromRect(rect: rect, child: painter));
@@ -261,76 +261,72 @@ class WoodBoardPainter extends CustomPainter {
       old.cols != cols || old.rows != rows;
 }
 
-/// A tinted, glossy acrylic plate with metal-rimmed screw holes.
+/// A colour-stained wooden plank with grain along its length, a visible
+/// edge thickness and drilled, countersunk screw holes.
 class PlatePainter extends CustomPainter {
   final Color color;
   final List<Offset> holes;
   final double cell;
+  final int seed;
 
-  PlatePainter(this.color, this.holes, this.cell);
+  PlatePainter(this.color, this.holes, this.cell, {this.seed = 0});
+
+  static const _rawWood = Color(0xFFDDB27A);
 
   @override
   void paint(Canvas canvas, Size size) {
     final inset = cell * 0.06;
     final rect = (Offset.zero & size).deflate(inset);
-    final radius = Radius.circular(cell * 0.28);
-    final rr = RRect.fromRectAndRadius(rect, radius);
+    final rr = RRect.fromRectAndRadius(rect, Radius.circular(cell * 0.22));
+    // Stain soaks into the wood: mix the paint colour with raw timber.
+    final stain = Color.lerp(color, _rawWood, 0.28)!;
+    final dark = Palette.shade(stain, -0.2);
 
     // Cast shadow on the board below.
     canvas.drawRRect(
-      rr.shift(Offset(cell * 0.06, cell * 0.12)),
+      rr.shift(Offset(cell * 0.06, cell * 0.13)),
       Paint()
-        ..color = const Color(0xFF5D3A17).withValues(alpha: 0.28)
+        ..color = const Color(0xFF5D3A17).withValues(alpha: 0.32)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, cell * 0.08),
     );
-
-    // Plate thickness: a darker slab peeking out below.
+    // Plank thickness.
     canvas.drawRRect(
-      rr.shift(Offset(0, cell * 0.05)),
-      Paint()..color = Palette.shade(color, -0.2).withValues(alpha: 0.55),
+      rr.shift(Offset(0, cell * 0.07)),
+      Paint()..color = Palette.shade(stain, -0.26),
     );
 
-    // Translucent body so buried bolts show through faintly.
+    // Body, slightly see-through so buried bolts are faintly visible.
     canvas.drawRRect(
       rr,
       Paint()
         ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
-            Color.lerp(color, Colors.white, 0.35)!.withValues(alpha: 0.78),
-            color.withValues(alpha: 0.7),
+            Palette.shade(stain, 0.08).withValues(alpha: 0.9),
+            stain.withValues(alpha: 0.88),
+            Palette.shade(stain, -0.05).withValues(alpha: 0.9),
           ],
         ).createShader(rect),
     );
 
     canvas.save();
     canvas.clipRRect(rr);
-    // Diagonal gloss band.
-    final gloss = Path()
-      ..moveTo(rect.left, rect.top + rect.height * 0.55)
-      ..lineTo(rect.left + rect.width * 0.55, rect.top)
-      ..lineTo(rect.left + rect.width * 0.75, rect.top)
-      ..lineTo(rect.left, rect.top + rect.height * 0.85)
-      ..close();
-    canvas.drawPath(
-      gloss,
-      Paint()..color = Colors.white.withValues(alpha: 0.16),
-    );
-    // Top bevel highlight and bottom bevel shade.
+    _grain(canvas, rect, dark);
+    // Rounded top edge: light along the top, shade along the bottom.
     canvas.drawRRect(
-      rr.shift(Offset(0, cell * 0.035)),
+      rr.shift(Offset(0, cell * 0.04)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = cell * 0.07
+        ..color = Colors.white.withValues(alpha: 0.35),
+    );
+    canvas.drawRRect(
+      rr.shift(Offset(0, -cell * 0.04)),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = cell * 0.06
-        ..color = Colors.white.withValues(alpha: 0.55),
-    );
-    canvas.drawRRect(
-      rr.shift(Offset(0, -cell * 0.035)),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = cell * 0.05
-        ..color = Palette.shade(color, -0.18).withValues(alpha: 0.5),
+        ..color = dark.withValues(alpha: 0.45),
     );
     canvas.restore();
 
@@ -339,19 +335,127 @@ class PlatePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = max(1.2, cell * 0.035)
-        ..color = Palette.shade(color, -0.25),
+        ..color = Palette.shade(stain, -0.3),
     );
 
     for (final h in holes) {
-      HolePainter.paintHole(canvas, h, cell * 0.25);
+      paintWoodHole(canvas, h, cell * 0.25, stain);
     }
+  }
+
+  void _grain(Canvas canvas, Rect rect, Color dark) {
+    final horizontal = rect.width >= rect.height;
+    final length = horizontal ? rect.width : rect.height;
+    final across = horizontal ? rect.height : rect.width;
+    Offset at(double u, double v) => horizontal
+        ? Offset(rect.left + u, rect.top + v)
+        : Offset(rect.left + v, rect.top + u);
+
+    final rng = Random(seed * 7919 + (rect.width * 13 + rect.height).round());
+    final lines = max(5, (across / (cell * 0.12)).round());
+    for (var i = 0; i < lines; i++) {
+      final v0 = (i + rng.nextDouble()) / lines * across;
+      final amp = cell * (0.02 + rng.nextDouble() * 0.06);
+      final freq = (1.5 + rng.nextDouble() * 2.5) / length * pi;
+      final phase = rng.nextDouble() * pi * 2;
+      final path = Path();
+      for (double u = -4; u <= length + 4; u += 4) {
+        final o = at(u, v0 + sin(u * freq + phase) * amp);
+        u < 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+      }
+      final light = rng.nextDouble() < 0.3;
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = cell * (0.012 + rng.nextDouble() * 0.03)
+          ..color = light
+              ? Colors.white.withValues(alpha: 0.16)
+              : dark.withValues(alpha: 0.18 + rng.nextDouble() * 0.2),
+      );
+    }
+
+    // Occasional knot with rings that the grain bends around.
+    if (length > cell * 1.6 && rng.nextDouble() < 0.7) {
+      final c = at(
+        length * (0.25 + rng.nextDouble() * 0.5),
+        across * (0.3 + rng.nextDouble() * 0.4),
+      );
+      final kw = cell * 0.22, kh = cell * 0.11;
+      for (var k = 3; k >= 0; k--) {
+        final r = Rect.fromCenter(
+          center: c,
+          width: (horizontal ? kw : kh) * (1 + k * 0.6),
+          height: (horizontal ? kh : kw) * (1 + k * 0.6),
+        );
+        canvas.drawOval(
+          r,
+          Paint()
+            ..style = k == 0 ? PaintingStyle.fill : PaintingStyle.stroke
+            ..strokeWidth = cell * 0.018
+            ..color = dark.withValues(alpha: k == 0 ? 0.55 : 0.3),
+        );
+      }
+    }
+  }
+
+  static void paintWoodHole(Canvas canvas, Offset c, double r, Color stain) {
+    // Countersink: bare wood exposed by the drill.
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [const Color(0xFFB98A55), Color.lerp(stain, _rawWood, 0.6)!],
+          stops: const [0.6, 1],
+        ).createShader(Rect.fromCircle(center: c, radius: r)),
+    );
+    final inner = r * 0.68;
+    canvas.drawCircle(
+      c,
+      inner,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(0.15, 0.35),
+          colors: const [Color(0xFF5A3A1E), Color(0xFF2A1A0C)],
+        ).createShader(Rect.fromCircle(center: c, radius: inner)),
+    );
+    // Lit lower lip of the hole.
+    canvas.drawArc(
+      Rect.fromCircle(center: c, radius: inner),
+      0.2,
+      pi - 0.4,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = max(0.8, r * 0.1)
+        ..color = Colors.white.withValues(alpha: 0.35),
+    );
   }
 
   @override
   bool shouldRepaint(PlatePainter old) =>
       old.color != color ||
       old.cell != cell ||
+      old.seed != seed ||
       old.holes.length != holes.length;
+}
+
+/// A single drilled hole in wood, centred in its box.
+class WoodHolePainter extends CustomPainter {
+  final Color stain;
+  WoodHolePainter(this.stain);
+
+  @override
+  void paint(Canvas canvas, Size size) => PlatePainter.paintWoodHole(
+    canvas,
+    size.center(Offset.zero),
+    size.shortestSide / 2,
+    stain,
+  );
+
+  @override
+  bool shouldRepaint(WoodHolePainter old) => old.stain != stain;
 }
 
 class _FallingPlate extends StatelessWidget {

@@ -219,7 +219,12 @@ class _SpinningScrewsState extends State<_SpinningScrews>
                 width: pw * _cell,
                 height: ph * _cell,
                 child: CustomPaint(
-                  painter: PlatePainter(Palette.plate(c), const [], _cell),
+                  painter: PlatePainter(
+                    Palette.plate(c),
+                    const [],
+                    _cell,
+                    seed: c,
+                  ),
                 ),
               ),
             AnimatedBuilder(

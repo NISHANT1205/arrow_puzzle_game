@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../engine/level.dart';
 import '../game/game_controller.dart';
+import 'board_view.dart';
 import 'palette.dart';
 import 'screw_painter.dart';
 
@@ -106,94 +107,63 @@ class _Box extends StatelessWidget {
       );
     }
     final c = Palette.screw(color!);
-    return Container(
+    return SizedBox(
       width: _width,
       height: _height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Palette.shade(c, 0.12), c, Palette.shade(c, -0.1)],
-          stops: const [0, 0.5, 1],
-        ),
-        border: Border.all(color: Palette.shade(c, -0.22), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Palette.shade(c, -0.3).withValues(alpha: 0.4),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
+      child: Stack(
         children: [
-          // Lid hinge strip with a little handle.
-          Container(
-            height: 10,
-            margin: const EdgeInsets.fromLTRB(6, 3, 6, 0),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white.withValues(alpha: 0.55),
-                  Colors.white.withValues(alpha: 0.1),
-                ],
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Container(
-              width: 26,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Palette.shade(c, -0.25),
-                borderRadius: BorderRadius.circular(2),
-              ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: PlatePainter(c, const [], 44, seed: 100 + color!),
             ),
           ),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                for (var k = 0; k < LevelDef.boxCapacity; k++)
-                  Container(
-                    width: _socket,
-                    height: _socket,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        center: const Alignment(0, 0.3),
-                        colors: [
-                          Palette.shade(c, -0.12),
-                          Palette.shade(c, -0.3),
-                        ],
-                      ),
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          width: 1.5,
+          Column(
+            children: [
+              // Carved finger slot for lifting the crate.
+              Container(
+                width: 30,
+                height: 6,
+                margin: const EdgeInsets.only(top: 7),
+                decoration: BoxDecoration(
+                  color: Palette.shade(c, -0.35).withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (var k = 0; k < LevelDef.boxCapacity; k++)
+                      SizedBox(
+                        width: _socket,
+                        height: _socket,
+                        child: CustomPaint(
+                          painter: WoodHolePainter(c),
+                          child: k < count
+                              ? TweenAnimationBuilder<double>(
+                                  tween: Tween(begin: 0.3, end: 1),
+                                  duration: const Duration(milliseconds: 250),
+                                  curve: Curves.easeOutBack,
+                                  builder: (_, s, ch) =>
+                                      Transform.scale(scale: s, child: ch),
+                                  child: ScrewIcon(
+                                    color: c,
+                                    size: _socket,
+                                    angle: k * 0.4,
+                                  ),
+                                )
+                              : null,
                         ),
                       ),
-                    ),
-                    child: k < count
-                        ? TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.3, end: 1),
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOutBack,
-                            builder: (_, s, ch) =>
-                                Transform.scale(scale: s, child: ch),
-                            child: ScrewIcon(
-                              color: c,
-                              size: _socket,
-                              angle: k * 0.4,
-                            ),
-                          )
-                        : null,
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -201,7 +171,7 @@ class _Box extends StatelessWidget {
   }
 }
 
-/// The brushed-steel holding tray for screws that have no open box yet.
+/// The wooden holding tray for screws that have no open box yet.
 class TrayView extends StatelessWidget {
   final GameController controller;
   final VoidCallback onAddSlot;
@@ -210,6 +180,8 @@ class TrayView extends StatelessWidget {
     required this.controller,
     required this.onAddSlot,
   });
+
+  static const _trayWood = Color(0xFFC89B62);
 
   @override
   Widget build(BuildContext context) {
@@ -220,70 +192,74 @@ class TrayView extends StatelessWidget {
       builder: (context, box) {
         final slots = cap + (controller.canAddSlot ? 1 : 0);
         final size = ((box.maxWidth - 32) / slots - 8).clamp(20.0, 38.0);
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        return Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Palette.steelLight, Palette.steelMid],
-            ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: danger
-                  ? const Color(0xFFE53935)
-                  : Palette.steelDark.withValues(alpha: 0.6),
-              width: danger ? 2.5 : 1.5,
-            ),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: Palette.softShadow(0.7),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var k = 0; k < cap; k++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: SizedBox(
-                    width: size,
-                    height: size,
-                    child: CustomPaint(
-                      painter: HolePainter([
-                        Offset(size / 2, size / 2),
-                      ], size / 2),
-                      child: k < state.buffer.length
-                          ? ScrewIcon(
-                              color: Palette.screw(
-                                controller.level.screws[state.buffer[k]].color,
-                              ),
-                              size: size,
-                              angle: k * 0.5,
-                            )
-                          : null,
-                    ),
+          foregroundDecoration: danger
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE53935),
+                    width: 2.5,
                   ),
-                ),
-              if (controller.canAddSlot)
-                GestureDetector(
-                  onTap: onAddSlot,
-                  child: Container(
-                    key: const Key('add-slot'),
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: size,
-                    height: size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Palette.accent.withValues(alpha: 0.18),
-                      border: Border.all(color: Palette.accent, width: 2),
+                )
+              : null,
+          child: CustomPaint(
+            painter: PlatePainter(_trayWood, const [], 60, seed: 42),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var k = 0; k < cap; k++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: SizedBox(
+                        width: size,
+                        height: size,
+                        child: CustomPaint(
+                          painter: WoodHolePainter(_trayWood),
+                          child: k < state.buffer.length
+                              ? ScrewIcon(
+                                  color: Palette.screw(
+                                    controller
+                                        .level
+                                        .screws[state.buffer[k]]
+                                        .color,
+                                  ),
+                                  size: size,
+                                  angle: k * 0.5,
+                                )
+                              : null,
+                        ),
+                      ),
                     ),
-                    child: Icon(
-                      Icons.add,
-                      color: const Color(0xFFE69500),
-                      size: size * 0.6,
+                  if (controller.canAddSlot)
+                    GestureDetector(
+                      onTap: onAddSlot,
+                      child: Container(
+                        key: const Key('add-slot'),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: size,
+                        height: size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Palette.accent,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: Palette.softShadow(0.4),
+                        ),
+                        child: Icon(
+                          Icons.add,
+                          color: Colors.white,
+                          size: size * 0.6,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         );
       },
