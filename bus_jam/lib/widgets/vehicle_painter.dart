@@ -52,6 +52,11 @@ class VehiclePainter extends CustomPainter {
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.06),
     );
 
+    if (kind == VehicleKind.bus) {
+      _cityBus(canvas, w, h);
+      return;
+    }
+
     _wheels(canvas, w, h);
 
     final body = Rect.fromLTWH(w * 0.07, 0, w * 0.86, h);
@@ -91,7 +96,7 @@ class VehiclePainter extends CustomPainter {
       case VehicleKind.van:
         _van(canvas, w, h);
       case VehicleKind.bus:
-        _bus(canvas, w, h);
+        break; // Drawn by _cityBus.
     }
     if (boarded != null) {
       final area = _seats(canvas, w, h);
@@ -107,13 +112,25 @@ class VehiclePainter extends CustomPainter {
   /// Open-top seat map: two columns, passengers as little heads.
   /// Open-top cabin with a fixed seat for every passenger: two columns of
   /// light seats, each showing a little passenger once someone boards.
-  Rect _seats(Canvas canvas, double w, double h) {
+  Rect _seats(
+    Canvas canvas,
+    double w,
+    double h, {
+    Rect? within,
+    bool glass = false,
+  }) {
     final rows = kind.seats ~/ 2;
     final top = h * (kind == VehicleKind.car ? 0.3 : 0.15);
     final bottom = h * (kind == VehicleKind.car ? 0.86 : 0.92);
-    final area = Rect.fromLTRB(w * 0.17, top, w * 0.83, bottom);
+    final area = within ?? Rect.fromLTRB(w * 0.17, top, w * 0.83, bottom);
     final floor = RRect.fromRectAndRadius(area, Radius.circular(w * 0.12));
-    canvas.drawRRect(floor, Paint()..color = Palette.shade(color, -0.12));
+    canvas.drawRRect(
+      floor,
+      Paint()
+        ..color = glass
+            ? Palette.shade(color, -0.3)
+            : Palette.shade(color, -0.12),
+    );
     canvas.drawRRect(
       floor,
       Paint()
@@ -167,7 +184,319 @@ class VehiclePainter extends CustomPainter {
         );
       }
     }
+    if (glass) {
+      // Tinted skylight over the cabin with a soft diagonal reflection.
+      canvas.drawRRect(
+        floor,
+        Paint()..color = const Color(0xFF9FD3FF).withValues(alpha: 0.14),
+      );
+      canvas.save();
+      canvas.clipRRect(floor);
+      final sheen = Path()
+        ..moveTo(area.left, area.top + area.height * 0.25)
+        ..lineTo(area.left + area.width * 0.55, area.top)
+        ..lineTo(area.left + area.width * 0.85, area.top)
+        ..lineTo(area.left, area.top + area.height * 0.42)
+        ..close();
+      canvas.drawPath(
+        sheen,
+        Paint()..color = Colors.white.withValues(alpha: 0.18),
+      );
+      canvas.restore();
+      canvas.drawRRect(
+        floor,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = max(1.2, w * 0.035)
+          ..color = const Color(0xFFB8C0CC),
+      );
+    }
     return area;
+  }
+
+  /// A detailed city bus seen from above.
+  void _cityBus(Canvas canvas, double w, double h) {
+    final dark = Palette.shade(color, -0.22);
+    final tyre = Paint()..color = const Color(0xFF202127);
+    final hub = Paint()..color = const Color(0xFF9AA3AE);
+
+    // Wheels: single front axle, twin rear axles.
+    final tw = w * 0.13, th = w * 0.3;
+    for (final y in [h * 0.08, h * 0.68, h * 0.78]) {
+      for (final x in [w * 0.005, w - tw - w * 0.005]) {
+        final r = RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, y, tw, th),
+          Radius.circular(tw * 0.35),
+        );
+        canvas.drawRRect(r, tyre);
+        canvas.drawRect(
+          Rect.fromLTWH(x + tw * 0.3, y + th * 0.3, tw * 0.4, th * 0.4),
+          hub,
+        );
+      }
+    }
+
+    // Body with a rounded-cylinder shade and a long specular line.
+    final body = Rect.fromLTWH(w * 0.06, 0, w * 0.88, h);
+    final rr = RRect.fromRectAndCorners(
+      body,
+      topLeft: Radius.circular(w * 0.18),
+      topRight: Radius.circular(w * 0.18),
+      bottomLeft: Radius.circular(w * 0.12),
+      bottomRight: Radius.circular(w * 0.12),
+    );
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            dark,
+            Palette.shade(color, 0.12),
+            color,
+            Palette.shade(color, -0.2),
+          ],
+          stops: const [0, 0.22, 0.6, 1],
+        ).createShader(body),
+    );
+    canvas.drawRRect(
+      rr,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = max(1.0, w * 0.03)
+        ..color = Palette.shade(color, -0.32),
+    );
+
+    // Front: bumper, lights, wide curved windshield with wipers.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.14, 0, w * 0.72, h * 0.012),
+        Radius.circular(w * 0.05),
+      ),
+      Paint()..color = const Color(0xFF2C2E35),
+    );
+    final head = Paint()..color = const Color(0xFFFFF6CF);
+    final amber = Paint()..color = const Color(0xFFFFA726);
+    for (final x in [w * 0.13, w * 0.73]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, h * 0.006, w * 0.14, h * 0.014),
+          Radius.circular(w * 0.04),
+        ),
+        head,
+      );
+    }
+    canvas.drawCircle(Offset(w * 0.1, h * 0.02), w * 0.035, amber);
+    canvas.drawCircle(Offset(w * 0.9, h * 0.02), w * 0.035, amber);
+    final ws = RRect.fromRectAndCorners(
+      Rect.fromLTWH(w * 0.11, h * 0.024, w * 0.78, h * 0.072),
+      topLeft: Radius.circular(w * 0.16),
+      topRight: Radius.circular(w * 0.16),
+      bottomLeft: Radius.circular(w * 0.04),
+      bottomRight: Radius.circular(w * 0.04),
+    );
+    _glass(canvas, Path()..addRRect(ws), ws.outerRect);
+    final wiper = Paint()
+      ..color = const Color(0xFF1B1D22)
+      ..strokeWidth = max(1.0, w * 0.025)
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(w * 0.3, h * 0.09),
+      Offset(w * 0.45, h * 0.045),
+      wiper,
+    );
+    canvas.drawLine(
+      Offset(w * 0.6, h * 0.09),
+      Offset(w * 0.75, h * 0.045),
+      wiper,
+    );
+
+    // Rabbit-ear mirrors reaching forward from the front corners.
+    final arm = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = max(1.0, w * 0.035)
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFF2C2E35);
+    final mirror = Paint()..color = const Color(0xFF2C2E35);
+    for (final side in [-1.0, 1.0]) {
+      final x0 = side < 0 ? w * 0.1 : w * 0.9;
+      final tip = Offset(x0 + side * w * 0.1, -h * 0.004);
+      canvas.drawPath(
+        Path()
+          ..moveTo(x0, h * 0.04)
+          ..quadraticBezierTo(
+            x0 + side * w * 0.12,
+            h * 0.035,
+            tip.dx,
+            tip.dy + h * 0.012,
+          ),
+        arm,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: tip, width: w * 0.09, height: h * 0.022),
+          Radius.circular(w * 0.03),
+        ),
+        mirror,
+      );
+    }
+
+    // Tinted window bands down both sides, split by pillars; door on the right.
+    final band = h * 0.11;
+    final bandLen = h * 0.8;
+    final pillar = Paint()..color = Palette.shade(color, -0.12);
+    for (final x in [w * 0.075, w * 0.855]) {
+      final strip = Rect.fromLTWH(x, band, w * 0.07, bandLen);
+      _glass(
+        canvas,
+        Path()
+          ..addRRect(RRect.fromRectAndRadius(strip, Radius.circular(w * 0.02))),
+        strip,
+      );
+      for (var k = 1; k < 7; k++) {
+        final y = band + bandLen * k / 7;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y - h * 0.004, w * 0.07, h * 0.008),
+          pillar,
+        );
+      }
+    }
+    canvas.drawRect(
+      Rect.fromLTWH(w * 0.855, band + h * 0.01, w * 0.07, h * 0.075),
+      Paint()..color = const Color(0xFF1F2A3C),
+    );
+    canvas.drawLine(
+      Offset(w * 0.89, band + h * 0.01),
+      Offset(w * 0.89, band + h * 0.085),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.4)
+        ..strokeWidth = 1,
+    );
+
+    // White roof with ribs.
+    final roof = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.155, h * 0.105, w * 0.69, h * 0.86),
+      Radius.circular(w * 0.08),
+    );
+    canvas.drawRRect(
+      roof,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Palette.shade(color, 0.04),
+            Palette.shade(color, 0.16),
+            Palette.shade(color, -0.02),
+          ],
+          stops: const [0, 0.4, 1],
+        ).createShader(roof.outerRect),
+    );
+    canvas.drawRRect(
+      roof,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Color.lerp(color, Colors.black, 0.25)!.withValues(alpha: 0.5),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndCorners(
+        Rect.fromLTWH(w * 0.155, h * 0.105, w * 0.69, h * 0.02),
+        topLeft: Radius.circular(w * 0.08),
+        topRight: Radius.circular(w * 0.08),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    );
+    final rib = Paint()
+      ..color = Colors.black.withValues(alpha: 0.06)
+      ..strokeWidth = 1;
+    for (double y = h * 0.13; y < h * 0.95; y += h * 0.035) {
+      canvas.drawLine(Offset(w * 0.17, y), Offset(w * 0.83, y), rib);
+    }
+
+    // Rear roof AC unit with fans.
+    final ac = RRect.fromRectAndRadius(
+      Rect.fromLTWH(w * 0.22, h * 0.8, w * 0.56, h * 0.11),
+      Radius.circular(w * 0.08),
+    );
+    canvas.drawRRect(
+      ac.shift(Offset(0, h * 0.006)),
+      Paint()..color = Colors.black.withValues(alpha: 0.18),
+    );
+    canvas.drawRRect(
+      ac,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFFF4F6F9), Color(0xFFC9D0DA)],
+        ).createShader(ac.outerRect),
+    );
+    final fan = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = max(0.8, w * 0.02)
+      ..color = const Color(0xFF8F98A5);
+    final fr = min(ac.width, ac.height) * 0.26;
+    for (final f in [0.33, 0.67]) {
+      final c = Offset(ac.left + ac.width / 2, ac.top + ac.height * f);
+      canvas.drawCircle(c, fr, fan);
+      canvas.drawLine(c - Offset(fr, 0), c + Offset(fr, 0), fan);
+      canvas.drawLine(c - Offset(0, fr), c + Offset(0, fr), fan);
+    }
+
+    // Rear: engine grille, bumper and tail lights.
+    final grille = Paint()
+      ..color = const Color(0xFF3A3D45)
+      ..strokeWidth = max(1.0, h * 0.004);
+    for (var k = 0; k < 3; k++) {
+      final y = h * (0.925 + k * 0.012);
+      canvas.drawLine(Offset(w * 0.3, y), Offset(w * 0.7, y), grille);
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.14, h * 0.988, w * 0.72, h * 0.012),
+        Radius.circular(w * 0.05),
+      ),
+      Paint()..color = const Color(0xFF2C2E35),
+    );
+    final tail = Paint()..color = const Color(0xFFD32F2F);
+    for (final x in [w * 0.1, w * 0.78]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, h * 0.972, w * 0.12, h * 0.014),
+          Radius.circular(w * 0.03),
+        ),
+        tail,
+      );
+    }
+
+    // Long specular highlight on the left flank.
+    canvas.drawLine(
+      Offset(w * 0.115, h * 0.05),
+      Offset(w * 0.115, h * 0.95),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.28)
+        ..strokeWidth = max(1.0, w * 0.025),
+    );
+
+    final cabin = Rect.fromLTWH(w * 0.2, h * 0.13, w * 0.6, h * 0.64);
+    if (boarded != null) {
+      _seats(canvas, w, h, within: cabin, glass: true);
+      _arrow(
+        canvas,
+        cabin.center,
+        min(cabin.width, cabin.height) * 0.75,
+        overSeats: true,
+      );
+    } else {
+      // Roof hatches and the arrow.
+      final hatch = Paint()..color = Colors.black.withValues(alpha: 0.12);
+      for (final f in [0.22, 0.6]) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.36, h * f, w * 0.28, h * 0.07),
+            Radius.circular(w * 0.04),
+          ),
+          hatch,
+        );
+      }
+      _arrow(canvas, Offset(w / 2, h * 0.42), w * 0.5);
+    }
   }
 
   void _wheels(Canvas canvas, double w, double h) {
@@ -391,54 +720,6 @@ class VehiclePainter extends CustomPainter {
     }
     _lights(canvas, w, h);
     _arrow(canvas, Offset(w / 2, h * 0.42), w * 0.55);
-  }
-
-  void _bus(Canvas canvas, double w, double h) {
-    final ws = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(w * 0.14, h * 0.025, w * 0.72, h * 0.07),
-          Radius.circular(w * 0.08),
-        ),
-      );
-    _glass(canvas, ws, Rect.fromLTWH(w * 0.14, h * 0.025, w * 0.72, h * 0.07));
-    _mirrors(canvas, w, h * 0.05);
-    // Window strips down both sides.
-    final glass = Paint()..color = const Color(0xFF3A4C6E);
-    final pillar = Paint()..color = Palette.shade(color, -0.1);
-    for (final x in [w * 0.08, w * 0.85]) {
-      final strip = Rect.fromLTWH(x, h * 0.12, w * 0.07, h * 0.8);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(strip, const Radius.circular(2)),
-        glass,
-      );
-      for (var k = 1; k < 6; k++) {
-        final y = strip.top + strip.height * k / 6;
-        canvas.drawRect(Rect.fromLTWH(x, y - 1, w * 0.07, 2), pillar);
-      }
-    }
-    final roof = Rect.fromLTWH(w * 0.18, h * 0.12, w * 0.64, h * 0.82);
-    _roof(canvas, roof, w * 0.08);
-    // White roof stripe and two AC units.
-    canvas.drawRect(
-      Rect.fromLTWH(w * 0.18, h * 0.12, w * 0.64, h * 0.05),
-      Paint()..color = Colors.white.withValues(alpha: 0.7),
-    );
-    final ac = Paint()..color = const Color(0xFFE6EAF0);
-    final acEdge = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = const Color(0xFFAEB6C2);
-    for (final f in [0.58, 0.78]) {
-      final r = RRect.fromRectAndRadius(
-        Rect.fromLTWH(w * 0.28, h * f, w * 0.44, h * 0.12),
-        Radius.circular(w * 0.06),
-      );
-      canvas.drawRRect(r, ac);
-      canvas.drawRRect(r, acEdge);
-    }
-    _lights(canvas, w, h);
-    _arrow(canvas, Offset(w / 2, h * 0.34), w * 0.55);
   }
 
   @override
