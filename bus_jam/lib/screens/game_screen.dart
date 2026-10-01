@@ -234,34 +234,45 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      Text(
-                        'Level ${widget.number}',
-                        style: const TextStyle(
-                          color: Palette.ink,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Level ${widget.number}',
+                                style: const TextStyle(
+                                  color: Palette.ink,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              if (boss)
+                                Container(
+                                  margin: const EdgeInsets.only(left: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD81B60),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text(
+                                    'BOSS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
-                      if (boss)
-                        Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD81B60),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            'HARD',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       CoinChip(coins: app.progress.coins),
                     ],
                   ),

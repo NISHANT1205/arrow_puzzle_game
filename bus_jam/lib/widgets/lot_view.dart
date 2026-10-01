@@ -96,6 +96,7 @@ class LotView extends StatelessWidget {
             Palette.vehicle(v.color),
             v.kind,
             glow: controller.hintVehicle == i,
+            boarded: 0,
           ),
         ),
       ),

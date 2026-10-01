@@ -29,7 +29,7 @@ void main() {
     t.view.devicePixelRatio = 2.75;
     addTearDown(t.view.reset);
     final state = await AppState.create(levels: repo);
-    await t.pumpWidget(ScrewJamApp(state: state));
+    await t.pumpWidget(BusJamApp(state: state));
     await settle(t, 2200);
     return state;
   }

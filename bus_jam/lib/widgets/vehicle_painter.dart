@@ -23,9 +23,12 @@ class VehiclePainter extends CustomPainter {
     this.boarded,
   });
 
+  double w0 = 0;
+
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
+    w0 = w;
     if (glow) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -90,43 +93,81 @@ class VehiclePainter extends CustomPainter {
       case VehicleKind.bus:
         _bus(canvas, w, h);
     }
-    if (boarded != null) _seats(canvas, w, h);
+    if (boarded != null) {
+      final area = _seats(canvas, w, h);
+      _arrow(
+        canvas,
+        area.center,
+        min(area.width, area.height) * 0.75,
+        overSeats: true,
+      );
+    }
   }
 
   /// Open-top seat map: two columns, passengers as little heads.
-  void _seats(Canvas canvas, double w, double h) {
+  /// Open-top cabin with a fixed seat for every passenger: two columns of
+  /// light seats, each showing a little passenger once someone boards.
+  Rect _seats(Canvas canvas, double w, double h) {
     final rows = kind.seats ~/ 2;
-    final top = h * (kind == VehicleKind.car ? 0.3 : 0.16);
-    final bottom = h * 0.9;
-    final area = Rect.fromLTRB(w * 0.18, top, w * 0.82, bottom);
+    final top = h * (kind == VehicleKind.car ? 0.3 : 0.15);
+    final bottom = h * (kind == VehicleKind.car ? 0.86 : 0.92);
+    final area = Rect.fromLTRB(w * 0.17, top, w * 0.83, bottom);
+    final floor = RRect.fromRectAndRadius(area, Radius.circular(w * 0.12));
+    canvas.drawRRect(floor, Paint()..color = Palette.shade(color, -0.12));
     canvas.drawRRect(
-      RRect.fromRectAndRadius(area, Radius.circular(w * 0.12)),
-      Paint()..color = Palette.shade(color, -0.3),
+      floor,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = max(1.0, w * 0.03)
+        ..color = Palette.shade(color, -0.26),
     );
     final cw = area.width / 2, ch = area.height / rows;
-    final r = min(cw, ch) * 0.36;
+    final sw = cw * 0.72, sh = min(ch * 0.78, sw * 1.05);
+    final seat = Paint()..color = const Color(0xFFFFFBF2);
+    final seatBack = Paint()..color = const Color(0xFFE4DDCF);
     for (var k = 0; k < kind.seats; k++) {
       final c = Offset(
         area.left + cw * (k % 2 + 0.5),
         area.top + ch * (k ~/ 2 + 0.5),
       );
+      final r = Rect.fromCenter(center: c, width: sw, height: sh);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, Radius.circular(sw * 0.25)),
+        seat,
+      );
+      // Backrest at the rear of the seat.
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(r.left, r.bottom - sh * 0.28, sw, sh * 0.28),
+          Radius.circular(sw * 0.2),
+        ),
+        seatBack,
+      );
       if (k < boarded!) {
-        canvas.drawCircle(c, r, Paint()..color = const Color(0xFFFFD9B8));
-        canvas.drawArc(
-          Rect.fromCircle(center: c, radius: r),
-          pi,
-          pi,
-          true,
-          Paint()..color = Palette.shade(color, -0.12),
-        );
-      } else {
+        final hr = min(sw, sh) * 0.4;
+        final head = c - Offset(0, sh * 0.06);
         canvas.drawCircle(
-          c,
-          r * 0.8,
-          Paint()..color = Colors.black.withValues(alpha: 0.22),
+          head,
+          hr,
+          Paint()
+            ..shader = RadialGradient(
+              center: const Alignment(-0.35, -0.4),
+              colors: [
+                Palette.shade(color, 0.25),
+                color,
+                Palette.shade(color, -0.2),
+              ],
+              stops: const [0, 0.6, 1],
+            ).createShader(Rect.fromCircle(center: head, radius: hr)),
+        );
+        canvas.drawCircle(
+          head + Offset(-hr * 0.35, -hr * 0.35),
+          hr * 0.25,
+          Paint()..color = Colors.white.withValues(alpha: 0.7),
         );
       }
     }
+    return area;
   }
 
   void _wheels(Canvas canvas, double w, double h) {
@@ -259,8 +300,38 @@ class VehiclePainter extends CustomPainter {
     );
   }
 
-  void _arrow(Canvas canvas, Offset c, double s) {
-    if (!arrow) return;
+  void _arrow(Canvas canvas, Offset c, double s, {bool overSeats = false}) {
+    if (!arrow || (boarded != null && !overSeats)) return;
+    if (overSeats) {
+      // Round white badge so the direction reads clearly over the seats.
+      final r = min(s * 0.5, w0 * 0.3);
+      canvas.drawCircle(
+        c + Offset(0, r * 0.12),
+        r,
+        Paint()..color = Colors.black.withValues(alpha: 0.25),
+      );
+      canvas.drawCircle(c, r, Paint()..color = Colors.white);
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = max(1.0, r * 0.12)
+          ..color = Palette.shade(color, -0.2),
+      );
+      final a = r * 1.25;
+      final p = Path()
+        ..moveTo(c.dx, c.dy - a * 0.5)
+        ..lineTo(c.dx + a * 0.42, c.dy)
+        ..lineTo(c.dx + a * 0.15, c.dy)
+        ..lineTo(c.dx + a * 0.15, c.dy + a * 0.45)
+        ..lineTo(c.dx - a * 0.15, c.dy + a * 0.45)
+        ..lineTo(c.dx - a * 0.15, c.dy)
+        ..lineTo(c.dx - a * 0.42, c.dy)
+        ..close();
+      canvas.drawPath(p, Paint()..color = Palette.shade(color, -0.22));
+      return;
+    }
     final p = Path()
       ..moveTo(c.dx, c.dy - s * 0.5)
       ..lineTo(c.dx + s * 0.42, c.dy - s * 0.02)
@@ -379,52 +450,92 @@ class VehiclePainter extends CustomPainter {
       old.boarded != boarded;
 }
 
-/// A cheerful round passenger seen from the front.
+/// A little toy-figure passenger in a solid colour, seen from slightly
+/// above: rounded body with arms, head with a shine, soft ground shadow.
 class PassengerPainter extends CustomPainter {
   final Color color;
-  PassengerPainter(this.color);
+
+  /// 0..1 walking phase; swings the arms and lifts the body a touch.
+  final double step;
+
+  PassengerPainter(this.color, {this.step = 0});
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
+    final lift = sin(step * pi * 2).abs() * h * 0.04;
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(w / 2, h * 0.94),
-        width: w * 0.8,
+        center: Offset(w / 2, h * 0.93),
+        width: w * (0.72 - lift / h),
         height: h * 0.12,
       ),
-      Paint()..color = Colors.black.withValues(alpha: 0.2),
+      Paint()..color = Colors.black.withValues(alpha: 0.22),
     );
+    canvas.save();
+    canvas.translate(0, -lift);
+
+    final light = Palette.shade(color, 0.16);
+    final dark = Palette.shade(color, -0.18);
+
+    // Arms.
+    final swing = sin(step * pi * 2) * w * 0.05;
+    final arm = Paint()..color = dark;
+    for (final (x, s) in [(w * 0.17, swing), (w * 0.83, -swing)]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(x, h * 0.62 + s),
+            width: w * 0.15,
+            height: h * 0.26,
+          ),
+          Radius.circular(w * 0.08),
+        ),
+        arm,
+      );
+    }
+    // Body.
     final body = RRect.fromRectAndCorners(
-      Rect.fromLTWH(w * 0.16, h * 0.42, w * 0.68, h * 0.52),
-      topLeft: Radius.circular(w * 0.34),
-      topRight: Radius.circular(w * 0.34),
-      bottomLeft: Radius.circular(w * 0.12),
-      bottomRight: Radius.circular(w * 0.12),
+      Rect.fromLTWH(w * 0.22, h * 0.42, w * 0.56, h * 0.48),
+      topLeft: Radius.circular(w * 0.26),
+      topRight: Radius.circular(w * 0.26),
+      bottomLeft: Radius.circular(w * 0.18),
+      bottomRight: Radius.circular(w * 0.18),
     );
     canvas.drawRRect(
       body,
       Paint()
         ..shader = LinearGradient(
-          colors: [Palette.shade(color, 0.12), Palette.shade(color, -0.12)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [light, color, dark],
         ).createShader(body.outerRect),
     );
-    final head = Offset(w / 2, h * 0.27);
-    final hr = w * 0.24;
-    canvas.drawCircle(head, hr, Paint()..color = const Color(0xFFFFD9B8));
-    // Hair cap in the passenger colour.
-    canvas.drawArc(
-      Rect.fromCircle(center: head, radius: hr),
-      pi,
-      pi,
-      true,
-      Paint()..color = Palette.shade(color, -0.18),
+    // Head.
+    final head = Offset(w / 2, h * 0.26);
+    final hr = w * 0.22;
+    canvas.drawCircle(
+      head,
+      hr,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.35, -0.4),
+          colors: [Palette.shade(color, 0.28), color, dark],
+          stops: const [0, 0.6, 1],
+        ).createShader(Rect.fromCircle(center: head, radius: hr)),
     );
-    final eye = Paint()..color = const Color(0xFF2E3557);
-    canvas.drawCircle(head + Offset(-hr * 0.38, hr * 0.25), hr * 0.13, eye);
-    canvas.drawCircle(head + Offset(hr * 0.38, hr * 0.25), hr * 0.13, eye);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: head + Offset(-hr * 0.35, -hr * 0.4),
+        width: hr * 0.6,
+        height: hr * 0.35,
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.65),
+    );
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(PassengerPainter old) => old.color != color;
+  bool shouldRepaint(PassengerPainter old) =>
+      old.color != color || old.step != step;
 }

@@ -10,12 +10,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   final state = await AppState.create();
-  runApp(ScrewJamApp(state: state));
+  runApp(BusJamApp(state: state));
 }
 
-class ScrewJamApp extends StatelessWidget {
+class BusJamApp extends StatelessWidget {
   final AppState state;
-  const ScrewJamApp({super.key, required this.state});
+  const BusJamApp({super.key, required this.state});
 
   @override
   Widget build(BuildContext context) {

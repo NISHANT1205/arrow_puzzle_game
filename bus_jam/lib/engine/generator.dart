@@ -24,67 +24,61 @@ class LevelGenerator {
   LevelGenerator(this.number, int seed) : rng = Random(seed);
 
   bool get _isBoss => number % 10 == 0;
-  bool get _isBreather => number % 10 == 1 && number > 20;
 
-  int get _cols => number <= 10 ? 6 : (number <= 40 ? 7 : 8);
+  /// A slightly gentler level after each boss; still a real puzzle.
+  bool get _isBreather => number % 10 == 1 && number > 10;
+
+  int get _cols => number <= 30 ? 7 : 8;
   int get _rows =>
-      number <= 10 ? 7 : (number <= 40 ? 9 : (number <= 120 ? 10 : 11));
+      number <= 5 ? 8 : (number <= 30 ? 9 : (number <= 100 ? 10 : 11));
 
+  /// Share of the lot covered by vehicles: packed from the very start.
   double get _density {
-    var d = 0.32 + min(number, 200) / 200 * 0.4;
-    if (_isBoss) d += 0.06;
-    if (_isBreather) d -= 0.12;
-    return d.clamp(0.25, 0.8);
+    var d = 0.68 + min(number, 200) / 200 * 0.2;
+    if (_isBoss) d += 0.05;
+    if (_isBreather) d -= 0.06;
+    return d.clamp(0.5, 0.9);
   }
 
   int get _colors {
     int c;
-    if (number <= 3) {
-      c = 2;
-    } else if (number <= 15) {
+    if (number <= 2) {
       c = 3;
-    } else if (number <= 40) {
+    } else if (number <= 10) {
       c = 4;
-    } else if (number <= 90) {
+    } else if (number <= 30) {
       c = 5;
-    } else if (number <= 150) {
+    } else if (number <= 80) {
       c = 6;
-    } else if (number <= 210) {
+    } else if (number <= 150) {
       c = 7;
     } else {
       c = 8;
     }
-    if (_isBreather) c = max(2, c - 1);
+    if (_isBreather) c = max(3, c - 1);
     return c;
   }
 
   /// Station bays the reference order may use at once.
-  int get _bayBudget {
-    if (number <= 5) return 2;
-    if (number <= 25 || _isBreather) return 3;
-    if (number <= 100) return 4;
-    return 5;
-  }
+  int get _bayBudget => number <= 3 ? 4 : 5;
 
-  int get _swapAttempts {
-    if (number <= 2) return 0;
-    if (_isBreather) return 30;
-    return min(80 + number * 8, 2000) + (_isBoss ? 400 : 0);
-  }
+  int get _swapAttempts => min(600 + number * 10, 3000) + (_isBoss ? 600 : 0);
 
-  double get _maxCasualWinRate {
-    if (number <= 12 || _isBreather) return 1.0;
-    var r = 1.0 - (number - 12) / 238 * 0.65;
-    if (_isBoss) r -= 0.15;
-    return r;
+  /// Most a skilled player (see [skilledWinRate]) may win this level.
+  double get _maxSkilledWinRate {
+    if (number == 1) return 0.85;
+    if (number <= 3) return 0.7;
+    var r = 0.55 - (number - 4) / 246 * 0.4; // 55% -> 15%
+    if (_isBoss) r -= 0.12;
+    if (_isBreather) r += 0.15;
+    return r.clamp(0.06, 0.85);
   }
 
   VehicleKind _kind() {
     final r = rng.nextDouble();
-    if (number <= 6) return VehicleKind.car;
-    if (number <= 15) return r < 0.7 ? VehicleKind.car : VehicleKind.van;
-    if (r < 0.5) return VehicleKind.car;
-    if (r < 0.8) return VehicleKind.van;
+    if (number <= 3) return r < 0.6 ? VehicleKind.car : VehicleKind.van;
+    if (r < 0.34) return VehicleKind.car;
+    if (r < 0.67) return VehicleKind.van;
     return VehicleKind.bus;
   }
 
@@ -128,10 +122,10 @@ class LevelGenerator {
     }
 
     var misses = 0;
-    while (filled < target && misses < 60) {
+    while (filled < target && misses < 250) {
       VehicleDef? best;
       var bestScore = -1.0;
-      for (var t = 0; t < 40; t++) {
+      for (var t = 0; t < 60; t++) {
         final kind = _kind();
         final dir = Dir.values[rng.nextInt(4)];
         final v = VehicleDef(
@@ -211,8 +205,15 @@ class LevelGenerator {
     }
 
     final level = build();
-    final rate = casualWinRate(level, Random(number), 60);
-    if (rate > _maxCasualWinRate || rate < 0.05) return null;
+    // The packed lot must actually be reached; sparse rolls are retried.
+    if (filled < target * 0.9) return null;
+    // Neither simple strategy may find it easy, and at least one must
+    // occasionally succeed so the level never feels impossible.
+    final rate = max(
+      skilledWinRate(level, Random(number), 60),
+      casualWinRate(level, Random(number + 1), 60),
+    );
+    if (rate > _maxSkilledWinRate || rate < 0.03) return null;
     if (Solver(nodeLimit: 60000).solve(GameState.initial(level)) == null) {
       return null;
     }
@@ -283,8 +284,38 @@ class LevelGenerator {
     return wins / trials;
   }
 
+  /// Win rate of a player who taps the vehicle whose passengers are needed
+  /// soonest three times out of four, and any free vehicle otherwise.
+  static double skilledWinRate(LevelDef level, Random rng, int trials) {
+    var wins = 0;
+    for (var t = 0; t < trials; t++) {
+      final g = GameState.initial(level);
+      while (!g.isWon) {
+        final moves = g.legalMoves();
+        if (moves.isEmpty) break;
+        int need(int m) {
+          final c = level.vehicles[m].color;
+          for (var i = g.front; i < level.queue.length; i++) {
+            if (level.queue[i] == c) return i - g.front;
+          }
+          return 1 << 20;
+        }
+
+        int pick;
+        if (rng.nextDouble() < 0.75) {
+          pick = moves.reduce((a, b) => need(a) <= need(b) ? a : b);
+        } else {
+          pick = moves[rng.nextInt(moves.length)];
+        }
+        g.tap(pick);
+      }
+      if (g.isWon) wins++;
+    }
+    return wins / trials;
+  }
+
   static LevelDef generate(int number) {
-    for (var attempt = 0; attempt < 5000; attempt++) {
+    for (var attempt = 0; attempt < 20000; attempt++) {
       final level = LevelGenerator(
         number,
         number * 7919 + attempt * 104729,

@@ -7,113 +7,217 @@ import '../game/game_controller.dart';
 import 'palette.dart';
 import 'vehicle_painter.dart';
 
-/// Passengers waiting on the platform, front of the queue on the left.
-class QueueView extends StatelessWidget {
+/// Passengers walking a winding queue towards the boarding gate at the
+/// bottom-left. The front of the queue is nearest the bays; everyone behind
+/// is visible along the snake path and shuffles forward as people board.
+class QueueView extends StatefulWidget {
   final GameController controller;
   const QueueView({super.key, required this.controller});
 
+  static const rows = 3;
+  static const rowHeight = 38.0;
+  static const size = 28.0;
+
+  @override
+  State<QueueView> createState() => _QueueViewState();
+}
+
+class _QueueViewState extends State<QueueView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _walk = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _walk.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final level = controller.level;
     final front = controller.state.front;
-    return LayoutBuilder(
-      builder: (context, box) {
-        const size = 30.0, gap = 2.0;
-        const step = size + gap;
-        final visible = max(1, ((box.maxWidth - 90) / step).floor());
-        final left = level.queue.length - front;
-        return Container(
-          height: 58,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: Palette.card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Palette.cardBorder),
-            boxShadow: Palette.softShadow(0.6),
-          ),
-          child: Row(
+    final left = level.queue.length - front;
+    const rows = QueueView.rows, rowH = QueueView.rowHeight;
+    const size = QueueView.size;
+    return Container(
+      height: rows * rowH + 16,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3EFE6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Palette.cardBorder),
+        boxShadow: Palette.softShadow(0.6),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          const gate = 34.0, badge = 52.0;
+          final trackW = box.maxWidth - gate - badge;
+          final perRow = max(2, (trackW / (size * 0.82)).floor());
+          final step = trackW / perRow;
+          final visible = min(left, perRow * rows);
+
+          // Index along the snake -> position. Row 0 is the bottom row and
+          // runs left to right from the gate; rows alternate direction.
+          Offset at(int k) {
+            final r = k ~/ perRow, c = k % perRow;
+            final col = r.isEven ? c : perRow - 1 - c;
+            return Offset(
+              gate + col * step + (step - size) / 2,
+              (rows - 1 - r) * rowH + (rowH - size - 6) / 2,
+            );
+          }
+
+          return Stack(
+            clipBehavior: Clip.none,
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Palette.blue,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.directions_bus_filled_rounded,
-                  color: Colors.white,
-                  size: 22,
+              Positioned(
+                left: gate,
+                top: 0,
+                width: trackW,
+                height: rows * rowH,
+                child: CustomPaint(
+                  painter: _SnakePainter(rows: rows, rowHeight: rowH),
                 ),
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Stack(
+              // Boarding gate.
+              Positioned(
+                left: 0,
+                bottom: 2,
+                width: gate - 4,
+                height: rowH - 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Palette.blue,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: Palette.softShadow(0.4),
+                  ),
+                  child: const Icon(
+                    Icons.directions_bus_filled_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+              AnimatedBuilder(
+                animation: _walk,
+                builder: (context, _) => Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // Platform edge.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 4,
-                      height: 6,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFE082),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                    for (var k = 0; k < min(visible, left); k++)
+                    for (var k = visible - 1; k >= 0; k--)
                       AnimatedPositioned(
                         key: ValueKey('pax-${front + k}'),
-                        duration: const Duration(milliseconds: 280),
+                        duration: const Duration(milliseconds: 320),
                         curve: Curves.easeOut,
-                        left: k * step,
-                        top: 6,
+                        left: at(k).dx,
+                        top: at(k).dy,
                         width: size,
                         height: size + 6,
                         child: CustomPaint(
                           painter: PassengerPainter(
                             Palette.vehicle(level.queue[front + k]),
+                            // Everyone shuffles on the spot; the front few
+                            // step a little faster.
+                            step: (_walk.value + k * 0.13) % 1.0,
                           ),
                         ),
                       ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Palette.field,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: badge - 6,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
                       Icons.people_alt_rounded,
-                      size: 16,
+                      size: 18,
                       color: Palette.inkSoft,
                     ),
-                    const SizedBox(width: 3),
                     Text(
                       '$left',
                       key: const Key('pax-left'),
                       style: const TextStyle(
                         color: Palette.ink,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
+}
+
+/// The winding walkway with guide rails.
+class _SnakePainter extends CustomPainter {
+  final int rows;
+  final double rowHeight;
+  _SnakePainter({required this.rows, required this.rowHeight});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lane = rowHeight * 0.78;
+    final path = Path();
+    for (var r = 0; r < rows; r++) {
+      final y = (rows - 1 - r) * rowHeight + rowHeight / 2;
+      final fromLeft = r.isEven;
+      final x0 = fromLeft ? 0.0 : size.width - lane / 2;
+      final x1 = fromLeft ? size.width - lane / 2 : lane / 2;
+      if (r == 0) path.moveTo(x0, y);
+      path.lineTo(x1, y);
+      if (r < rows - 1) {
+        // U-turn up to the next row.
+        path.arcToPoint(
+          Offset(x1, y - rowHeight),
+          radius: Radius.circular(rowHeight / 2),
+          clockwise: !fromLeft,
+        );
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lane + 4
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFFFD54F),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lane
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFE2DCCD),
+    );
+    // Footprint dashes down the middle of the walkway.
+    final dash = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withValues(alpha: 0.7);
+    for (final metric in path.computeMetrics()) {
+      for (double d = 0; d < metric.length; d += 14) {
+        canvas.drawPath(metric.extractPath(d, d + 6), dash);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SnakePainter old) =>
+      old.rows != rows || old.rowHeight != rowHeight;
 }
 
 /// Station bays where vehicles wait for passengers.
@@ -133,7 +237,7 @@ class BaysView extends StatelessWidget {
       builder: (context, box) {
         // 10px padding and 3px border on each side.
         final bw = (box.maxWidth - 26) / count;
-        const height = 172.0;
+        const height = 150.0;
         // Inner height minus padding (14), border (6) and the seat badge (22)
         // must fit the longest vehicle, a 4-cell bus drawn 1.08 x per cell.
         final vw = min(bw * 0.6, (height - 14 - 6 - 22) / (4 * 1.08));

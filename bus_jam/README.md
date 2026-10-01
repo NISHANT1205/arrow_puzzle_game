@@ -7,13 +7,15 @@ fill them with matching passengers.
 ## Features
 
 - **250 levels**, each checked by the automated tests below
-- Lot sizes grow from 6×7 to 8×11. Cars (4 seats) come first, then vans
-  (6 seats), then buses (10 seats). Up to 8 colours. Every 10th level is
-  **HARD**, with easier "breather" levels in between
-- Top-down cars, vans and buses with a direction arrow on the roof. Parked
-  vehicles show a seat map that fills with passengers
-- Passenger queue on a platform, 5 station bays (+2 you can buy), and a road
-  loop around the lot
+- **Hard from the start**: lots are 68–90% full and mix cars (4 seats),
+  vans (6 seats) and buses (10 seats), with 3 to 8 colours. Every 10th level
+  is a **BOSS** level; the level after a boss is a little gentler but still a
+  real puzzle
+- Top-down cars, vans and buses. Each one shows its fixed seats and has a
+  direction badge in the middle; seats fill with passengers as they board
+- Passengers walk along a winding 3-row queue, with everyone behind them
+  visible. There are 5 station bays (+2 you can buy) and a road loop around
+  the lot
 - Animations: vehicles drive out, bump into whatever blocks them, arrive in
   their bay, and drive off once full; the queue shuffles forward
 - **Login / Sign up / Guest**. Accounts are stored on the device; passwords are
@@ -53,9 +55,11 @@ flutter build apk --release
 3. Passengers are lined up in exactly that order, then shuffled with random
    swaps. A swap is kept only if that order still wins without using more
    bays than the level's difficulty allows.
-4. The level is rejected if a simulated casual player wins it too often (too
-   easy) or almost never (too hard). An independent solver
-   (`lib/engine/solver.dart`) must also solve it from the start.
+4. Two simulated players test the level. One taps the vehicle whose
+   passengers are needed soonest; the other matches the front passenger. If
+   either wins too often, the level is rejected. The cap is 55% at level 4
+   and drops to 15% by level 250 (lower on boss levels). An independent
+   solver (`lib/engine/solver.dart`) must also solve the level from the start.
 
 Regenerate with `dart run tool/generate_levels.dart 250`.
 
@@ -73,6 +77,10 @@ For **every one of the 250 levels** the tests check that:
 - the independent solver solves the level from the start
 - random play (30 runs per level) always ends as a clear **win** or a detected
   **stuck** state; the lot never jams while a bay is free
+
+`test/play_all_levels_test.dart` also **plays all 250 levels through the
+real game screen**, tapping each vehicle the way a player would, and checks
+that the win dialog appears with 3 stars.
 
 Engine tests cover blocking, boarding, departures, the stuck state, undo,
 extra bays and hints. UI tests cover sign up, login, validation, guest mode,
