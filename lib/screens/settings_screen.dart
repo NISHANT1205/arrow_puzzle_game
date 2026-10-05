@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/progress_provider.dart';
 import '../state/settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -31,6 +32,34 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Dark theme'),
             value: settings.darkMode,
             onChanged: notifier.setDarkMode,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.restart_alt_rounded),
+            title: const Text('Reset progress'),
+            subtitle: const Text('Start again from level 1'),
+            onTap: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Reset progress?'),
+                  content: const Text('You will go back to level 1.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Reset'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await ref.read(progressProvider.notifier).resetProgress();
+              }
+            },
           ),
         ],
       ),

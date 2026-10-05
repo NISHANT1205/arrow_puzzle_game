@@ -2,120 +2,100 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/level.dart';
-import '../state/level_provider.dart';
+
+import '../engine/level_generator.dart';
+import '../services/level_repository.dart';
 import '../state/progress_provider.dart';
-import 'game_screen.dart';
+import '../widgets/tier_badge.dart';
 
+/// Grid of levels. Cleared and current levels are playable; the next few
+/// locked levels are shown greyed out.
 class LevelSelectScreen extends ConsumerWidget {
-  final String packName;
+  const LevelSelectScreen({super.key, required this.onPlay});
 
-  const LevelSelectScreen({Key? key, required this.packName}) : super(key: key);
+  final ValueChanged<int> onPlay;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final levelsAsync = ref.watch(levelsByPackProvider(packName));
+    final current = ref.watch(progressProvider).currentLevel;
+    final shown = ((current + 30) ~/ 10 + 1) * 10;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('$packName Pack'),
-        centerTitle: true,
-      ),
-      body: levelsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
-        data: (levels) {
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
-              childAspectRatio: 1,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
+      appBar: AppBar(title: const Text('Levels')),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 76,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+        ),
+        itemCount: shown,
+        itemBuilder: (context, i) {
+          final level = i + 1;
+          final cleared = level < current;
+          final isCurrent = level == current;
+          final locked = level > current;
+          final bg = isCurrent
+              ? const Color(0xFF2E90FF)
+              : cleared
+                  ? scheme.primaryContainer
+                  : scheme.surfaceContainerHighest.withValues(alpha: .5);
+          final fg = isCurrent
+              ? Colors.white
+              : cleared
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurface.withValues(alpha: .35);
+          return Material(
+            color: bg,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: locked
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      onPlay(level);
+                    },
+              child: Stack(
+                children: [
+                  if (LevelRepository.instance.isCube(level))
+                    const Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Icon(
+                        Icons.view_in_ar_rounded,
+                        size: 16,
+                        color: CubeBadge.color,
+                      ),
+                    ),
+                  if (LevelTier.forLevel(level) != LevelTier.normal)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Icon(
+                        Icons.local_fire_department_rounded,
+                        size: 16,
+                        color: TierBadge.colorFor(LevelTier.forLevel(level)),
+                      ),
+                    ),
+                  Center(
+                    child: locked
+                        ? Icon(Icons.lock_rounded, color: fg, size: 20)
+                        : Text(
+                            '$level',
+                            style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
-            itemCount: levels.length,
-            itemBuilder: (context, index) {
-              final level = levels[index];
-              return _LevelTile(level: level);
-            },
           );
         },
-      ),
-    );
-  }
-}
-
-class _LevelTile extends ConsumerWidget {
-  final Level level;
-
-  const _LevelTile({required this.level});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final progress = ref.watch(levelProgressProvider(level.id));
-    final isCompleted = progress.isCompleted;
-    final stars = progress.stars;
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => GameScreen(level: level),
-          ),
-        );
-      },
-      child: Card(
-        elevation: isCompleted ? 4 : 2,
-        child: Stack(
-          children: [
-            // Background
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: isCompleted
-                    ? Colors.blue.withOpacity(0.1)
-                    : Colors.grey.withOpacity(0.05),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      level.id.toString(),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${level.gridSize}×${level.gridSize}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Completion indicator
-            if (isCompleted)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Column(
-                  children: [
-                    for (int i = 0; i < 3; i++)
-                      Icon(
-                        Icons.star,
-                        size: 12,
-                        color: i < stars
-                            ? Colors.amber
-                            : Colors.grey.withOpacity(0.3),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }

@@ -1,0 +1,255 @@
+// lib/engine/puzzle_board.dart
+//
+// Pure game rules, no Flutter imports.
+//
+// Rule: tapping an arrow makes it slide forward along its own body and then
+// straight ahead in the direction its head points. It escapes if every cell
+// from the head to the edge of the board is empty. On a cube the way ahead
+// runs over the cube's edges onto the next face (see BoardShape). Otherwise it travels until
+// its head bumps into the first arrow in the way and snaps back — the tap is
+// a mistake and costs a life.
+
+import '../models/arrow_path.dart';
+import '../models/level.dart';
+import 'board_shape.dart';
+
+/// Outcome of checking (or performing) a tap.
+sealed class MoveResult {
+  const MoveResult(this.arrow);
+  final ArrowPath arrow;
+}
+
+/// The arrow leaves the board. [exitSteps] is how many cells the head travels
+/// before it is past the edge.
+class Escaped extends MoveResult {
+  const Escaped(super.arrow, this.exitSteps);
+  final int exitSteps;
+}
+
+/// The arrow is blocked. The head can travel [freeSteps] empty cells before
+/// it hits [blocker] at [hitCell].
+class Blocked extends MoveResult {
+  const Blocked(super.arrow, this.freeSteps, this.blocker, this.hitCell);
+  final int freeSteps;
+  final ArrowPath blocker;
+  final Cell hitCell;
+}
+
+class PuzzleBoard {
+  PuzzleBoard({
+    required this.rows,
+    required this.cols,
+    required Iterable<ArrowPath> arrows,
+    BoardShape? shape,
+  }) : shape = shape ?? RectShape(rows, cols) {
+    for (final a in arrows) {
+      add(a);
+    }
+  }
+
+  PuzzleBoard.forLevel(Level level)
+      : this(
+          rows: level.rows,
+          cols: level.cols,
+          arrows: level.arrows,
+          shape: level.shape,
+        );
+
+  final int rows;
+  final int cols;
+  final BoardShape shape;
+
+  final Map<int, ArrowPath> _arrows = {};
+  final Map<Cell, int> _occupancy = {};
+
+  Iterable<ArrowPath> get arrows => _arrows.values;
+  int get count => _arrows.length;
+  bool get isCleared => _arrows.isEmpty;
+
+  bool inBounds(Cell c) => shape.contains(c);
+
+  bool isEmpty(Cell c) => !_occupancy.containsKey(c);
+
+  ArrowPath? arrowById(int id) => _arrows[id];
+
+  ArrowPath? arrowAt(Cell c) {
+    final id = _occupancy[c];
+    return id == null ? null : _arrows[id];
+  }
+
+  void add(ArrowPath arrow) {
+    for (final c in arrow.cells) {
+      if (!inBounds(c)) {
+        throw ArgumentError('$arrow leaves the ${cols}x$rows board');
+      }
+    }
+    for (var i = 1; i < arrow.cells.length; i++) {
+      final prev = arrow.cells[i - 1];
+      if (shape.bodyStep(prev, Dir.between(prev, arrow.cells[i])) !=
+          arrow.cells[i]) {
+        throw ArgumentError('$arrow crosses from one face to another');
+      }
+    }
+    for (final c in arrow.cells) {
+      if (_occupancy.containsKey(c)) {
+        throw ArgumentError('$arrow overlaps arrow #${_occupancy[c]} at $c');
+      }
+    }
+    _arrows[arrow.id] = arrow;
+    for (final c in arrow.cells) {
+      _occupancy[c] = arrow.id;
+    }
+  }
+
+  void remove(int id) {
+    final arrow = _arrows.remove(id);
+    if (arrow == null) return;
+    for (final c in arrow.cells) {
+      _occupancy.remove(c);
+    }
+  }
+
+  /// What would happen if [arrow] were tapped now. Does not change the board.
+  MoveResult evaluate(ArrowPath arrow) {
+    var steps = 0;
+    for (final cell in shape.lane(arrow.head, arrow.direction)) {
+      final other = _occupancy[cell];
+      if (other != null) {
+        return Blocked(arrow, steps, _arrows[other]!, cell);
+      }
+      steps++;
+    }
+    return Escaped(arrow, steps + 1);
+  }
+
+  bool canEscape(ArrowPath arrow) => evaluate(arrow) is Escaped;
+
+  /// Taps [arrow]: removes it when it escapes, leaves the board untouched when
+  /// it is blocked.
+  MoveResult tap(ArrowPath arrow) {
+    final result = evaluate(arrow);
+    if (result is Escaped) remove(arrow.id);
+    return result;
+  }
+
+  /// Arrows that can leave right now.
+  List<ArrowPath> freeArrows() => [
+        for (final a in _arrows.values)
+          if (canEscape(a)) a,
+      ];
+
+  /// Measures how hard the board is. See [BoardStats].
+  BoardStats analyze() {
+    final copy =
+        PuzzleBoard(rows: rows, cols: cols, arrows: arrows, shape: shape);
+    final total = copy.count;
+    final cells = copy._occupancy.length;
+    final initialFree = copy.freeArrows().length;
+    var layers = 0;
+    var narrowest = total;
+    while (!copy.isCleared) {
+      final free = copy.freeArrows();
+      if (free.isEmpty) {
+        return BoardStats(
+          arrows: total,
+          cells: cells,
+          initialFree: initialFree,
+          layers: layers,
+          narrowest: narrowest,
+          solvable: false,
+          shapeFactor: _shapeFactor,
+        );
+      }
+      layers++;
+      if (free.length < narrowest) narrowest = free.length;
+      for (final a in free) {
+        copy.remove(a.id);
+      }
+    }
+    return BoardStats(
+      arrows: total,
+      cells: cells,
+      initialFree: initialFree,
+      layers: layers,
+      narrowest: narrowest,
+      solvable: true,
+      shapeFactor: _shapeFactor,
+    );
+  }
+
+  /// Extra difficulty of the board's shape (see [BoardStats.shapeFactor]).
+  double get _shapeFactor {
+    final s = shape;
+    if (s is! CubeShape) return 1;
+    return s.allSides ? 2 : 1.25;
+  }
+
+  /// Removing an arrow only ever frees cells, so repeatedly removing any free
+  /// arrow clears the board exactly when the puzzle is solvable. Returns a
+  /// full clearing order, or null when the board is stuck.
+  List<int>? solve() {
+    final copy =
+        PuzzleBoard(rows: rows, cols: cols, arrows: arrows, shape: shape);
+    final order = <int>[];
+    while (!copy.isCleared) {
+      final free = copy.freeArrows();
+      if (free.isEmpty) return null;
+      for (final a in free) {
+        copy.remove(a.id);
+        order.add(a.id);
+      }
+    }
+    return order;
+  }
+}
+
+/// Difficulty numbers for a board.
+class BoardStats {
+  const BoardStats({
+    required this.arrows,
+    required this.cells,
+    required this.initialFree,
+    required this.layers,
+    required this.narrowest,
+    required this.solvable,
+    this.shapeFactor = 1,
+  });
+
+  final int arrows;
+
+  /// Cells covered by arrows: long winding arrows are harder to trace.
+  final int cells;
+
+  /// Arrows that can leave at the very start. Fewer means more traps.
+  final int initialFree;
+
+  /// Rounds needed when every free arrow is removed at once: the length of
+  /// the longest chain of "this arrow must go before that one".
+  final int layers;
+
+  /// Fewest free arrows seen in any round: a bottleneck where only a couple
+  /// of moves are safe.
+  final int narrowest;
+
+  final bool solvable;
+
+  /// How much harder the board's shape makes it: 1 for a flat board. On a
+  /// three-face cube lanes bend over edges onto other faces (1.25). On an
+  /// all-sides cube half the arrows are out of sight at any moment and the
+  /// player keeps turning it to find them (2).
+  final double shapeFactor;
+
+  /// Share of arrows that are traps at the start (0 = all free).
+  double get trapRatio => arrows == 0 ? 0 : 1 - initialFree / arrows;
+
+  /// One number for "how hard is this board": more arrow to trace, longer
+  /// chains of moves that must happen in order, and fewer safe first moves
+  /// all make it harder. Bundled levels strictly increase in this score.
+  double get score =>
+      cells * (1 + .2 * layers) * (.6 + trapRatio) * shapeFactor;
+
+  @override
+  String toString() => 'arrows=$arrows free=$initialFree layers=$layers '
+      'narrowest=$narrowest score=${score.toStringAsFixed(1)} '
+      'solvable=$solvable';
+}

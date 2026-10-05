@@ -1,258 +1,180 @@
-# Arrow Puzzle - Flutter Game
+# Arrow Puzzle (Flutter)
 
-A complete, production-ready Arrow Puzzle game in Flutter with **200+ guaranteed-solvable levels** across 8 difficulty packs.
+A Flutter take on the trending "arrows escape" puzzle: a dot grid packed with
+snake-like arrows. Tap an arrow and it slithers along its own body and out of
+the board in the direction its head points. If another arrow is in the way,
+it crashes, bounces back, flashes red, and you lose a heart. Clear the board
+before you run out of hearts.
 
-## Overview
+## Gameplay
 
-Arrow Puzzle is a logic puzzle game where you tap arrows on a grid, causing them to slide off the board in their pointing direction—but only if nothing blocks their path. The goal is to clear all arrows by tapping them in the correct order.
+- **Arrows** are paths of connected cells with any number of 90° bends. The
+  head points along the last segment.
+- **Tap** an arrow: it escapes if every cell straight ahead of its head, up
+  to the edge, is empty.
+- **Blocked**: the arrow slides until it hits the arrow in its way, turns
+  red, snaps back, and costs **1 of 3 hearts**.
+- **Hint** highlights an arrow that can escape right now.
+- **Out of hearts**: retry the level, or continue once with +1 heart.
+- **Win**: clear every arrow to unlock the next level.
+- **Pinch to zoom** (up to 6×) and pan on big boards.
 
-**Key Features:**
-- ✅ 200 pre-generated, validated levels (100% solvable)
-- ✅ 8 difficulty packs (Beginner → Expert)
-- ✅ Reverse-construction algorithm (guarantees solvability)
-- ✅ Undo, Reset, and Hint features
-- ✅ Star rating system (1-3 stars based on efficiency)
-- ✅ Progress persistence (completion, stars, move counts)
-- ✅ Sound effects and haptic feedback (optional, togglable)
-- ✅ Dark/Light theme support
-- ✅ Smooth animations (slide-off, bounce, celebration)
-- ✅ Fully offline (no backend required)
+## Levels
 
-## Building From Scratch
+**300 bundled levels, each one harder than the one before**, then endless
+generated levels at the hardest settings.
 
-### Prerequisites
-- Flutter 3.0+ ([Install](https://flutter.dev/docs/get-started/install))
-- Dart 3.0+
-- Android SDK (for APK) / Xcode (for iOS)
+### Always harder
 
-### Steps
+Every level has a difficulty score (`BoardStats.score`):
 
-1. **Clone/Extract Project**
-   ```bash
-   cd arrow_puzzle
-   ```
+```
+score = cells covered by arrows × (1 + 0.2 × layers) × (0.6 + trap ratio)
+```
 
-2. **Get Dependencies**
-   ```bash
-   flutter pub get
-   ```
+- **cells**: how much arrow there is to trace. Bigger boards and longer
+  arrows mean more.
+- **layers**: the longest chain of "this arrow must go before that one".
+- **trap ratio**: the share of arrows that can't move at the start.
 
-3. **Run Development Build**
-   ```bash
-   flutter run
-   ```
+### Difficulty schedule
 
-4. **Build Release APK (Android)**
-   ```bash
-   flutter build apk --release
-   ```
+The badge marks the stage: **HARD** from level 100, **SUPER HARD** from
+200.
 
-5. **Build App Bundle (for Play Store)**
-   ```bash
-   flutter build appbundle --release
-   ```
+| Levels | Board | What happens |
+|---|---|---|
+| 1–100 | 4×6 → 11×15 | Learning curve: short arrows, no deliberate traps |
+| 100–200 | 12×17 → 21×29 | Steep climb: boards grow fast, arrows get longer, **traps** switch on and reach full strength |
+| 200–300 | 22×30 | Hardest knobs: full traps, long winding arrows, lanes of 3+ cells |
 
-## Project Structure
+**Traps** (`LevelConfig.blockLanes`): the generator keeps track of which
+arrows can currently escape and puts new arrows right in their escape
+lanes, so they can't leave until the new arrow is gone. It also won't place
+an arrow on the edge pointing straight out (`minLane`), because those could
+never be trapped.
+
+| Level | Board | Arrows | Chain | Score (before → now) |
+|---|---|---|---|---|
+| 100 | 11×15 | 35 | 8 | 327 → 495 |
+| 150 | 16×22 | 47 | 11 | 666 → 1283 |
+| 200 | 21×29 | 53 | 17 | 1107 → 2834 |
+| 250 | 22×30 | 69 | 17 | 1730 → 3419 |
+| 300 | 22×30 | 57 | 26 | 3007 → 4893 |
+
+`tool/build_levels.dart` builds the levels. Levels that share a board size
+share a pool of boards (160 per size, 640+ for the 22×30 levels). The pool
+is sorted by score, and evenly spaced boards that beat the previous level
+are handed out.
+
+```bash
+dart run tool/build_levels.dart 300   # rebuilds assets/levels/levels.json
+```
+
+### 3D cube levels
+
+Levels 1–99 are flat boards. From level 100, **every 5th level is a 3D
+cube**:
+
+| Levels | Cube |
+|---|---|
+| 100–145 | The three faces seen from the front corner. The cube turns a little. |
+| 150–300 | **Arrows on all six sides.** Turn the cube freely to find them. |
+
+- **Turning**: drag with one finger to turn the cube, pinch to zoom.
+- **Hidden sides**: faces turned away, and the arrows on them, are hidden
+  and can't be tapped. When a hint points at an arrow on a hidden side, the
+  cube turns to show it.
+- **Rule**: arrow bodies stay on one face. An escape lane runs over one cube
+  edge onto the next face, heading straight away from the face it left, and
+  flies off the cube at the next edge. On the three-face cube a lane heading
+  for a missing face leaves right there. So arrows on different faces block
+  each other.
+- **Geometry**: `CubeShape` works all this out in 3D. `CubeView`
+  (yaw/pitch) projects it onto the screen.
+- **Generator**: the always-solvable generator builds cubes too. A seam
+  bias puts arrows at cube edges pointing over them. On all-sides cubes new
+  arrows go mostly onto the emptiest face, so every side gets arrows.
+- **Builder rules**: a cube level must have at least 2 arrows blocked by an
+  arrow on another face at the start, and every side of an all-sides cube
+  carries at least 2 arrows. The cube must score between the level before
+  and the level after, or the level stays flat. That happened at 205–220,
+  230, 240, 245, 255 and 275, so there are 32 cube levels.
+- **3D counts in the score**: on a three-face cube lanes bend onto other
+  faces, so its score is ×1.25. On an all-sides cube half the arrows are
+  always out of sight, so its score is ×2. This is a judgement call, set in
+  `BoardStats.shapeFactor`.
+
+### Always solvable, never stuck
+
+Arrows are placed one at a time, and each new arrow's escape lane must be
+clear of the arrows already placed, so removing them in reverse order always
+works. Removing an arrow never blocks another one, so once a level is
+solvable it stays solvable whatever order you play in. The only way to
+lose is running out of hearts.
+
+The tests check every bundled level:
+
+- It is solvable, and its recorded stats match.
+- It scores higher than the level before, on a board at least as big.
+- A perfect player wins it with 0 mistakes.
+- 5 random players per level, who tap any arrow including blocked ones,
+  always end in a win or a loss. There is always a safe move while the game
+  is on, and no game runs longer than arrows + 4 taps.
+- The hint is always a safe move.
+- `test/game_screen_test.dart` plays **all bundled levels in a row on the
+  real game screen**. It taps each arrow's head, checks that every tap
+  removes an arrow, waits for "Level Complete!" and presses "Next Level".
+  It also checks losing, Continue, Try Again, and winning on the last
+  heart.
+
+Safety nets in the app:
+
+- The win/lose dialog also has a timer backup, so it shows even if an
+  animation never reports back.
+- A board with no possible move (which the checks rule out) ends the game
+  instead of hanging.
+- A level that fails to load shows "Try again" instead of spinning forever.
+
+## Project structure
 
 ```
 lib/
-  main.dart                  # App entry + home screen
-  engine/                    # Core game logic
-    arrow_board.dart        # Ray-casting, collision detection
+  main.dart                     App + theme
   models/
-    level.dart              # Level + Arrow data classes
-    progress.dart           # Progress tracking (stars, moves)
-  screens/
-    game_screen.dart        # Active gameplay UI
-    level_select_screen.dart # Level grid browser
-    pack_select_screen.dart  # Pack selection + stats
-  services/
-    level_repository.dart   # Loads levels.json
-    local_storage_service.dart
-    audio_service.dart      # Sound effects
-    haptic_service.dart     # Haptic feedback
+    arrow_path.dart             Cell, Dir, ArrowPath (tail -> head cells)
+    level.dart                  Level (rows, cols, arrows)
+    level_codec.dart            Compact level file format
+  engine/
+    board_shape.dart            Flat board and 3D cube: lanes, screen positions
+    puzzle_board.dart           Rules: escape / blocked, solver
+    level_generator.dart        Deterministic, always-solvable generator
   state/
-    game_provider.dart      # Riverpod: active game
-    progress_provider.dart  # Riverpod: completion tracking
-    level_provider.dart     # Riverpod: level loading
-    settings_provider.dart  # Riverpod: user prefs
+    game_controller.dart        Lives, hints, win/lose for one play-through
+    progress_provider.dart      Current level (persisted)
+    settings_provider.dart      Sound / haptics / dark mode
+  screens/
+    home_screen.dart            Logo board + "Level N" play button
+    game_screen.dart            Board, hearts, hint, restart, result dialogs
+    level_select_screen.dart    Replay cleared levels
+    settings_screen.dart
   widgets/
-    arrow_tile.dart        # Arrow display + animations
-    arrow_board_widget.dart # Game grid
-  utils/
-    animation_durations.dart
-
-assets/
-  data/levels.json          # 200 bundled levels
-
-tool/
-  generate_levels.dart      # Level generation + validation tool
+    arrow_board_view.dart       Dot grid, arrow painter, tap + animations
+    hearts_bar.dart
+    tier_badge.dart             HARD / SUPER HARD and 3D CUBE pills
+  services/
+    level_repository.dart       Bundled levels, then endless ones
+    ...                         Storage, system sounds, haptics
+assets/levels/levels.json       The bundled levels
+test/                           Rules, every level, real-screen play
+tool/build_levels.dart          Builds and checks the bundled levels
 ```
 
-## Level Generation Pipeline
+## Run
 
-All 200 levels were generated using a **reverse-construction algorithm** that guarantees solvability:
-
-1. Pick k arrow positions (intended removal order)
-2. Build board **backwards** (from k to 1):
-   - For each position, choose a direction whose ray avoids already-placed arrows
-   - Add the position to the board
-3. By construction, the removal order is always valid
-4. Run validator: replay the order against actual game logic → must fully clear
-5. All 200 levels passed validation (100% solvable)
-
-**Generator runs offline at build time** (`tool/generate_levels.dart`):
 ```bash
-dart tool/generate_levels.dart
+flutter pub get
+flutter run
+flutter test
+flutter build apk --release
 ```
-
-Produces: `assets/data/levels.json` (bundled in the app)
-
-## How to Play
-
-### Gameplay
-- **Tap an arrow** to slide it off the board
-- Arrow only moves if its path is clear (no other arrows blocking)
-- If blocked, arrow shakes in place (no state change)
-- **Goal:** Clear all arrows from the board
-
-### Level Navigation
-- Select a **Pack** (Beginner → Expert)
-- Select a **Level** within the pack
-- Tap to enter **Game Screen**
-
-### In-Game Controls
-- **Undo**: Restore the last removed arrow
-- **Reset**: Return to the level's starting state
-- **Hint**: Highlights an arrow that can be safely tapped right now
-
-### Star Rating
-- ⭐ 1 star: Level completed
-- ⭐⭐ 2 stars: Completed with ≤2 blocked taps
-- ⭐⭐⭐ 3 stars: Perfect! Zero blocked taps (fully efficient order)
-
-## Difficulty Progression
-
-| Pack | Grid | Arrows | Directions | Density |
-|------|------|--------|-----------|---------|
-| Beginner | 5×5 | 6–9 | Orthogonal | Low |
-| Elementary | 6×6 | 10–14 | Orthogonal | Low |
-| Intermediate I | 7×7 | 15–18 | Orthogonal | Medium |
-| Intermediate II | 7×7 | 19–22 | Orthogonal | High |
-| Advanced I | 8×8 | 20–25 | All 8 | Medium |
-| Advanced II | 8×8 | 26–30 | All 8 | High |
-| Expert I | 9×9 | 30–38 | All 8 | High |
-| Expert II | 9×9 | 39–45 | All 8 | Very High |
-
-*Note: Diagonals (↖️↗️↙️↘️) introduced in Advanced I*
-
-## Technology Stack
-
-- **Framework**: Flutter (Dart)
-- **State Management**: Riverpod (reactive, composable)
-- **Persistence**: shared_preferences (offline)
-- **Audio**: audioplayers (graceful fallback)
-- **Haptics**: Flutter's HapticFeedback API
-- **Animations**: Flutter's built-in animation framework + flutter_animate
-- **Validation**: Dart script (run at build time)
-
-## Customization
-
-### Modify Difficulty Curve
-Edit `tool/generate_levels.dart` in the `PackConfig` definitions:
-```dart
-PackConfig(
-  name: 'Custom Pack',
-  gridSize: 6,
-  minArrows: 10,
-  maxArrows: 15,
-  allowDiagonals: false,
-)
-```
-
-Then regenerate: `dart tool/generate_levels.dart`
-
-### Change Colors/Theme
-Edit `lib/utils/animation_durations.dart` and `lib/main.dart`:
-```dart
-ColorScheme.fromSeed(seedColor: Colors.purple) // Change primary color
-```
-
-### Disable Sound/Haptics
-In **Settings Screen** (or programmatically):
-```dart
-AudioService().setEnabled(false);
-HapticService().setEnabled(false);
-```
-
-## Performance Notes
-
-- **Levels Loading**: Cached in memory (first load ~10ms, subsequent ~0ms)
-- **Grid Rendering**: Efficient GridView.builder (renders only visible cells)
-- **Ray-Casting**: O(gridSize) per tap (very fast)
-- **State Updates**: Riverpod watches only affected providers
-- **Memory**: ~2-3 MB (200 levels + assets)
-
-## Troubleshooting
-
-### "levels.json not found"
-Ensure you ran: `dart tool/generate_levels.dart` before building
-
-### No Sound/Haptics
-These gracefully fall back on unsupported platforms. Check:
-- `AudioService().setEnabled(false)` ?
-- Platform supports audio/haptics?
-- App has microphone permission?
-
-### Slow Performance
-- Disable animations in settings (future enhancement)
-- Close other apps
-- Check device storage (should have >50MB free)
-
-## Next Steps for Polish
-
-1. **Animations**: 
-   - Implement actual slide-off animation (currently instant removal)
-   - Confetti burst on level complete
-
-2. **Audio**: 
-   - Add placeholder sound files or record custom sounds
-   - Background music option
-
-3. **Daily Puzzle**: 
-   - Reuse generation pipeline for daily hand-picked level
-   - Streak tracking
-
-4. **Settings Screen**: 
-   - Implement sound toggle
-   - Haptics toggle
-   - Dark mode toggle
-
-5. **Play Store Release**:
-   - App icon (1024×1024)
-   - Screenshots (5-8 for Android)
-   - Listing description & keywords
-   - Content rating questionnaire
-
-## Acceptance Criteria (All Met ✅)
-
-- [x] 200+ levels bundled and playable
-- [x] Every level guaranteed solvable (reverse-construction algorithm)
-- [x] All levels pass build-time validator (200/200)
-- [x] Blocked taps never change state, give clear feedback
-- [x] Valid taps always remove arrows with animations
-- [x] Hint correctly identifies currently tappable arrow
-- [x] Undo and Reset work correctly
-- [x] Star rating based on blocked taps
-- [x] Progress persists across restarts
-- [x] Responsive grid layout (all device sizes)
-- [x] Code compiles without errors
-- [x] Offline gameplay (no backend)
-
-## License
-
-Arrow Puzzle © 2026. Built with Flutter.
-
----
-
-**Questions?** This game uses standard Flutter best practices. Consult [Flutter Docs](https://flutter.dev/docs) for framework-specific questions, or check `lib/` comments for game-logic details.
