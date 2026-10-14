@@ -1,0 +1,68 @@
+{
+  "package_name": "com.nisharc.arrowpuzzle",
+  "version_name": "1.0.0",
+  "version_code": 1,
+  "default_language": "en-US",
+  "app_type": "Game",
+  "category": "Puzzle",
+  "contains_ads": false,
+  "in_app_purchases": false,
+  "requires_login": false,
+  "data_safety_draft": {
+    "collects_user_data": false,
+    "shares_user_data": false,
+    "basis": "Reviewed dependencies and release app code: no ads, analytics, accounts or network data collection; preferences stay on device.",
+    "note": "Confirm the final Play Console questionnaire before submission. Device-managed backup preferences are disclosed in the policy."
+  },
+  "developer_name": null,
+  "support_email": "nishants.robocircuits@gmail.com",
+  "privacy_policy_url": "https://nisharcstudios.vercel.app/privacy-policy/arrow-puzzle",
+  "website_url": "https://nisharcstudios.vercel.app",
+  "pricing": null,
+  "target_countries": null,
+  "target_age_groups": null,
+  "content_rating": "Complete the Play Console content-rating questionnaire; no rating is preassigned.",
+  "keyword_themes": [
+    "arrow puzzle",
+    "arrow escape",
+    "logic puzzle",
+    "tap puzzle",
+    "offline puzzle game",
+    "3D cube puzzle"
+  ],
+  "keyword_research": "Relevance-based copy; keyword search volumes and ranking outcomes have not been measured.",
+  "assets": {
+    "icon": "graphics/store-icon-512.png",
+    "feature_graphic": "graphics/feature-graphic-1024x500.png",
+    "phone_screenshots": "../edited/",
+    "screenshot_dimensions": "1080x1920",
+    "recommended_screenshot_order": [
+      "02-gameplay",
+      "04-cube",
+      "03-levels",
+      "05-hint",
+      "06-dark-mode",
+      "01-home",
+      "07-level-complete",
+      "09-settings"
+    ]
+  },
+  "character_counts": {
+    "title": 26,
+    "short_description": 79,
+    "full_description": 2140,
+    "release_notes": 215
+  },
+  "pending_console_fields": [
+    "developer_name",
+    "pricing",
+    "target_countries",
+    "target_age_groups",
+    "content_rating_questionnaire"
+  ],
+  "policy_sources": [
+    "https://support.google.com/googleplay/android-developer/answer/9859152?hl=en",
+    "https://support.google.com/googleplay/android-developer/answer/10144311",
+    "https://support.google.com/googleplay/android-developer/answer/11926878?hl=en-sg"
+  ]
+}

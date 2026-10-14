@@ -1,0 +1,18 @@
+{
+  "games": [
+    {
+      "_id": "6aa045eaa0557358161cd58c",
+      "slug": "arrow-puzzle",
+      "name": "Arrow Puzzle",
+      "packageName": "com.example.arrow_puzzle",
+      "published": true,
+      "privacyPolicy": "/privacy-policy/arrow-puzzle"
+    }
+  ],
+  "policies": [],
+  "settings": {
+    "_id": "6aa045eba0557358161cd593",
+    "studioName": "NishArc Studios",
+    "contactEmail": "nishants.robocircuits@gmail.com"
+  }
+}

@@ -10,35 +10,29 @@ class TierBadge extends StatelessWidget {
 
   final LevelTier tier;
 
-  static Color colorFor(LevelTier tier) => switch (tier) {
-        LevelTier.normal => const Color(0xFF2E90FF),
-        LevelTier.hard => const Color(0xFFFF8A1F),
-        LevelTier.superHard => const Color(0xFFE5304F),
-      };
-
   @override
   Widget build(BuildContext context) {
-    final color = colorFor(tier);
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color,
+        color: scheme.primary,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.local_fire_department_rounded,
             size: 14,
-            color: Colors.white,
+            color: scheme.onPrimary,
           ),
           const SizedBox(width: 4),
           Text(
             tier.label.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: scheme.onPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: .8,
@@ -54,26 +48,25 @@ class TierBadge extends StatelessWidget {
 class CubeBadge extends StatelessWidget {
   const CubeBadge({super.key});
 
-  static const color = Color(0xFF7C4DFF);
-
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color,
+        color: scheme.primary,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.view_in_ar_rounded, size: 14, color: Colors.white),
-          SizedBox(width: 4),
+          Icon(Icons.view_in_ar_rounded, size: 14, color: scheme.onPrimary),
+          const SizedBox(width: 4),
           Text(
             '3D CUBE',
             style: TextStyle(
-              color: Colors.white,
+              color: scheme.onPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w900,
               letterSpacing: .8,

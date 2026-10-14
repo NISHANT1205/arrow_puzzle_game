@@ -1,0 +1,27 @@
+Arrow Puzzle — Android release
+Package: com.nisharc.arrowpuzzle
+Version: 1.0.0 (version code 1)
+Target SDK: 36
+Minimum SDK: 24
+
+Upload com.nisharc.arrowpuzzle-1.0.0-1.aab to Play Console and use Play App Signing.
+The AAB is signed with this project's new upload key, not the debug key.
+If this package already exists in Play Console, its registered upload certificate
+must match upload-certificate.pem, or the upload key must be reset in Play Console.
+
+For future builds from the project root:
+  flutter build appbundle --release
+
+Keep private backups of these two files from the project:
+  android/upload-keystore.jks
+  android/key.properties
+These are ignored by Git and deliberately excluded from the release ZIP.
+The key.properties file contains the keystore passwords; do not publish it.
+The .pem certificates in this release folder are public upload certificates.
+
+Increment the build number in pubspec.yaml before a subsequent Play upload.
+Privacy policy: https://nisharcstudios.vercel.app/privacy-policy/arrow-puzzle
+Support email: nishants.robocircuits@gmail.com
+Public developer details, pricing, countries, target audience and rating
+questionnaire are set in Play Console.
+The prepared public privacy policy is listing/privacy-policy.html.

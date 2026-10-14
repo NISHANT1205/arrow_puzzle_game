@@ -1,0 +1,106 @@
+{
+  "capture_device": "iPhone 17 simulator",
+  "output_pixels": [
+    1080,
+    1920
+  ],
+  "format": "PNG RGB",
+  "recommended_upload_order": [
+    "02-gameplay",
+    "04-cube",
+    "03-levels",
+    "05-hint",
+    "06-dark-mode",
+    "01-home",
+    "07-level-complete",
+    "09-settings"
+  ],
+  "alternate_images": [
+    "08-game-over",
+    "10-reset-confirmation"
+  ],
+  "method": "Built-in imagegen for marketing artwork; final original simulator screenshot compositing with CoreGraphics to preserve exact UI. iOS status bar and bottom safe area cropped from inserts.",
+  "prompt_constraints": "Ice-blue background, navy bold headline, blue ARROW PUZZLE label, subtle arrow motifs, flat rounded screenshot panel, no phone frame or invented features. Reference the real screenshot and first poster style; use the exact headline and subtitle recorded for each image.",
+  "screens": [
+    {
+      "id": "01-home",
+      "screen": "Home",
+      "headline": "Clear the way.",
+      "subtitle": "One arrow at a time.",
+      "raw": "raw/01-home.png",
+      "edited": "edited/01-home.png"
+    },
+    {
+      "id": "02-gameplay",
+      "screen": "Gameplay",
+      "headline": "Find the right order.",
+      "subtitle": "Think ahead. Tap to escape.",
+      "raw": "raw/02-gameplay.png",
+      "edited": "edited/02-gameplay.png"
+    },
+    {
+      "id": "03-levels",
+      "screen": "Level selection",
+      "headline": "Explore 225 levels.",
+      "subtitle": "A new board. A new challenge.",
+      "raw": "raw/03-levels.png",
+      "edited": "edited/03-levels.png"
+    },
+    {
+      "id": "04-cube",
+      "screen": "3D cube",
+      "headline": "Think in 3D.",
+      "subtitle": "Rotate. Explore. Find the way out.",
+      "raw": "raw/04-cube.png",
+      "edited": "edited/04-cube.png"
+    },
+    {
+      "id": "05-hint",
+      "screen": "Hint",
+      "headline": "A little nudge.",
+      "subtitle": "Find an arrow with a clear path.",
+      "raw": "raw/05-hint.png",
+      "edited": "edited/05-hint.png"
+    },
+    {
+      "id": "06-dark-mode",
+      "screen": "Dark mode",
+      "headline": "Go dark.",
+      "subtitle": "Your puzzles. A different look.",
+      "raw": "raw/06-dark-mode.png",
+      "edited": "edited/06-dark-mode.png"
+    },
+    {
+      "id": "07-level-complete",
+      "screen": "Level complete",
+      "headline": "That cleared feeling.",
+      "subtitle": "Solve the board. Keep going.",
+      "raw": "raw/07-level-complete.png",
+      "edited": "edited/07-level-complete.png"
+    },
+    {
+      "id": "08-game-over",
+      "screen": "Game over",
+      "headline": "Try a new approach.",
+      "subtitle": "Restart or continue with one heart.",
+      "raw": "raw/08-game-over.png",
+      "edited": "edited/08-game-over.png"
+    },
+    {
+      "id": "09-settings",
+      "screen": "Settings",
+      "headline": "Play your way.",
+      "subtitle": "Sound, vibration and dark mode.",
+      "raw": "raw/09-settings.png",
+      "edited": "edited/09-settings.png"
+    },
+    {
+      "id": "10-reset-confirmation",
+      "screen": "Reset confirmation",
+      "headline": "Start fresh.",
+      "subtitle": "Reset progress when you choose.",
+      "raw": "raw/10-reset-confirmation.png",
+      "edited": "edited/10-reset-confirmation.png"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/local_storage_service.dart';
+import '../services/audio_service.dart';
 
 /// User settings
 class AppSettings {
@@ -52,8 +53,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   }
 
   Future<void> setSoundEnabled(bool enabled) async {
-    await _storage.saveBoolSetting('sound_enabled', enabled);
+    AudioService().setEnabled(enabled);
     state = state.copyWith(soundEnabled: enabled);
+    if (enabled) AudioService().playUITap();
+    await _storage.saveBoolSetting('sound_enabled', enabled);
   }
 
   Future<void> setHapticsEnabled(bool enabled) async {

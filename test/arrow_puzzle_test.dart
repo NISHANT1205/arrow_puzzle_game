@@ -115,11 +115,13 @@ void main() {
     }
   });
 
-  test('hard badge follows the level number', () {
+  test('hard badge follows curated slots and fifth-level peaks', () {
     expect(LevelTier.forLevel(1), LevelTier.normal);
-    expect(LevelTier.forLevel(99), LevelTier.normal);
-    expect(LevelTier.forLevel(100), LevelTier.hard);
-    expect(LevelTier.forLevel(250), LevelTier.superHard);
+    expect(LevelTier.forLevel(74), LevelTier.normal);
+    expect(LevelTier.forLevel(75), LevelTier.superHard);
+    expect(LevelTier.forLevel(76), LevelTier.hard);
+    expect(LevelTier.forLevel(100), LevelTier.superHard);
+    expect(LevelTier.forLevel(151), LevelTier.superHard);
   });
 
   group('3D cube', () {

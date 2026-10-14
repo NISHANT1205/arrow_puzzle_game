@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'services/backend_sync_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/home_screen.dart';
@@ -7,6 +9,8 @@ import 'services/haptic_service.dart';
 import 'services/level_repository.dart';
 import 'services/local_storage_service.dart';
 import 'state/settings_provider.dart';
+import 'theme/app_theme.dart';
+import 'widgets/first_launch_name_prompt.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,35 +20,15 @@ void main() async {
   } catch (_) {
     // The game screen loads (and reports) levels on demand.
   }
+  AudioService().setEnabled(await LocalStorageService()
+      .loadBoolSetting('sound_enabled', defaultValue: true));
+  await AudioService().initialize();
   runApp(const ProviderScope(child: ArrowPuzzleApp()));
+  unawaited(BackendSyncService.instance.start());
 }
 
 class ArrowPuzzleApp extends ConsumerWidget {
   const ArrowPuzzleApp({super.key});
-
-  static ThemeData _theme(Brightness brightness) {
-    final dark = brightness == Brightness.dark;
-    return ThemeData(
-      useMaterial3: true,
-      brightness: brightness,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF2E90FF),
-        brightness: brightness,
-        surface: dark ? const Color(0xFF181B26) : Colors.white,
-      ),
-      scaffoldBackgroundColor:
-          dark ? const Color(0xFF0F111A) : const Color(0xFFFFFFFF),
-      appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -55,10 +39,10 @@ class ArrowPuzzleApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Arrow Puzzle',
       debugShowCheckedModeBanner: false,
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
+      theme: AppTheme.build(Brightness.light),
+      darkTheme: AppTheme.build(Brightness.dark),
       themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
-      home: const HomeScreen(),
+      home: const FirstLaunchNamePrompt(child: HomeScreen()),
     );
   }
 }

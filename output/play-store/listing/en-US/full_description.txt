@@ -1,0 +1,39 @@
+Find the clear path. Tap the right arrow. Clear the board.
+
+Arrow Puzzle: Tap & Escape is an offline logic puzzle game where every arrow needs a way out. Follow each arrow's direction, spot what is blocking its path, and choose the right order to remove them.
+
+The rules are easy to learn, but winding arrows and crowded boards make every move worth thinking about. A clear arrow slides away. A blocked arrow crashes and costs you a heart. Can you clear the whole board before your hearts run out?
+
+225 levels to explore
+Discover a curated collection of arrow puzzles, from smaller boards to larger layouts with long paths and tricky blockers. Replay completed levels and try to clear them without a mistake.
+
+A new dimension with 3D cube puzzles
+Selected levels take the challenge onto a 3D cube. Rotate the cube to inspect different sides and discover how arrows on one face can block arrows on another. Look beyond the front of the board to find your next move.
+
+How to play
+• Follow the direction of an arrow's head.
+• Check whether its escape path is clear.
+• Tap to send the arrow off the board.
+• Remove blocking arrows in the right order.
+• Clear every arrow to complete the level.
+
+Think before you tap
+Begin each level with three hearts. Tapping a blocked arrow costs one heart, so inspect the board and plan your moves. If you need help, use a hint to highlight an arrow that can escape.
+
+Play at your own pace
+There is no countdown pushing you to rush. Take your time tracing paths, untangling the board, and finding a clear route.
+
+Features
+• 225 bundled logic puzzle levels.
+• Flat arrow boards and selected 3D cube challenges.
+• Offline gameplay with no account required.
+• Hints to help you find a safe move.
+• Zoom and pan to inspect larger boards.
+• Rotate 3D cubes to explore hidden sides.
+• Replay completed levels.
+• Saved progress on your device.
+• Dark mode and adjustable sound and vibration settings.
+
+Whether you enjoy tap puzzles, arrow escape games, or untangling tricky logic boards, Arrow Puzzle gives you a simple goal with plenty to figure out.
+
+Take a closer look, choose your next arrow, and clear the way.

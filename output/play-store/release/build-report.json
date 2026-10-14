@@ -1,0 +1,338 @@
+{
+  "package_name": "com.nisharc.arrowpuzzle",
+  "version_name": "1.0.0",
+  "version_code": 1,
+  "min_sdk": 24,
+  "target_sdk": 36,
+  "debuggable": false,
+  "label": "Arrow Puzzle",
+  "permissions": [
+    "com.nisharc.arrowpuzzle.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+  ],
+  "bundle_bytes": 49199146,
+  "sha256": "d555b1dcc10790805339dbe53c1606e6faf9bd022dbc26c361fdb59711f888ad",
+  "bundletool_validation": "passed",
+  "jar_signature_verification": "passed",
+  "upload_certificate_sha256": "0C:DF:B0:45:F7:39:0E:C4:FB:0E:69:F2:AC:B7:ED:7D:1B:1B:87:3A:88:EB:FC:25:90:7F:98:7A:1D:29:88:01",
+  "native_libraries": [
+    {
+      "path": "base/lib/arm64-v8a/libFLAC.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libapp.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libdartjni.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libdatastore_shared_counter.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libflutter.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libflutter_soloud_plugin.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libogg.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libopus.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libvorbis.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libvorbisenc.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/arm64-v8a/libvorbisfile.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libFLAC.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libapp.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libdartjni.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libdatastore_shared_counter.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libflutter.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libflutter_soloud_plugin.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libogg.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libopus.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libvorbis.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libvorbisenc.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/armeabi-v7a/libvorbisfile.so",
+      "bits": 32,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libFLAC.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libapp.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libdartjni.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libdatastore_shared_counter.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libflutter.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        65536,
+        65536,
+        65536
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libflutter_soloud_plugin.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libogg.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libopus.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libvorbis.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libvorbisenc.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    },
+    {
+      "path": "base/lib/x86_64/libvorbisfile.so",
+      "bits": 64,
+      "load_segment_alignments": [
+        16384,
+        16384
+      ],
+      "supports_16kb_elf_alignment": true
+    }
+  ],
+  "native_library_packaging_alignment": "PAGE_ALIGNMENT_16K",
+  "checks": "Package, activity, version, target API, non-debug release, upload certificate, archive integrity and 64-bit ELF alignment checked.",
+  "runtime_smoke_test": "Not run: no Android device or emulator was connected."
+}

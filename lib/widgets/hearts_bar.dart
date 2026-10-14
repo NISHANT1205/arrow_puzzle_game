@@ -9,8 +9,6 @@ class HeartsBar extends StatelessWidget {
   final int lives;
   final int maxLives;
 
-  static const _red = Color(0xFFF03E5A);
-
   @override
   Widget build(BuildContext context) {
     final empty =
@@ -30,7 +28,8 @@ class HeartsBar extends StatelessWidget {
                 child: Icon(
                   Icons.favorite_rounded,
                   size: 30,
-                  color: Color.lerp(empty, _red, v.clamp(0.0, 1.0)),
+                  color: Color.lerp(empty,
+                      Theme.of(context).colorScheme.primary, v.clamp(0.0, 1.0)),
                 ),
               ),
             ),

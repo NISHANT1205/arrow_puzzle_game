@@ -21,6 +21,7 @@ import '../engine/board_shape.dart';
 import '../engine/puzzle_board.dart';
 import '../models/arrow_path.dart';
 import '../state/game_controller.dart';
+import '../services/audio_service.dart';
 
 /// Colours used on the board.
 class BoardPalette {
@@ -43,6 +44,16 @@ class BoardPalette {
   final Color faceLight;
   final Color faceDark;
   final Color faceEdge;
+
+  factory BoardPalette.fromScheme(ColorScheme scheme) => BoardPalette(
+        arrow: scheme.onSurface,
+        dot: scheme.onSurfaceVariant.withValues(alpha: .4),
+        hint: scheme.primary,
+        error: scheme.error,
+        faceLight: scheme.surfaceContainerLowest,
+        faceDark: scheme.surfaceContainerHighest,
+        faceEdge: scheme.outlineVariant,
+      );
 
   static const light = BoardPalette(
     arrow: Color(0xFF1C1F33),
@@ -143,6 +154,7 @@ class ArrowBoardViewState extends State<ArrowBoardView>
   CubeView _turnTo = CubeView.iso;
   double _zoom = 1;
   double _zoomAtStart = 1;
+  bool _rotatingGesture = false;
   Size _box = Size.zero;
   int? _lastHint;
 
@@ -279,7 +291,7 @@ class ArrowBoardViewState extends State<ArrowBoardView>
   }
 
   void _onTurn() {
-    final t = Curves.easeInOutCubic.transform(_turn.value);
+    final t = Curves.easeOutCubic.transform(_turn.value);
     setState(() {
       _view = CubeView(
         lerpDouble(_turnFrom.yaw, _turnTo.yaw, t)!,
@@ -288,17 +300,47 @@ class ArrowBoardViewState extends State<ArrowBoardView>
     });
   }
 
+  void _resetView() {
+    AudioService().playUITap();
+    _turn.stop();
+    setState(() => _zoom = 1);
+    _turnFrom = _view;
+    var delta = CubeView.iso.yaw - _view.yaw;
+    while (delta > math.pi) {
+      delta -= 2 * math.pi;
+    }
+    while (delta < -math.pi) {
+      delta += 2 * math.pi;
+    }
+    _turnTo = CubeView(_view.yaw + delta, CubeView.iso.pitch);
+    _turn.forward(from: 0);
+  }
+
+  void _onScaleEnd(ScaleEndDetails d) {
+    if (!_rotatingGesture) return;
+    final velocity = d.velocity.pixelsPerSecond;
+    if (velocity.distance < 80) return;
+    _turnFrom = _view;
+    _turnTo = _clamp(CubeView(
+      _view.yaw - (velocity.dx * .0012).clamp(-.65, .65),
+      _view.pitch + (velocity.dy * .0012).clamp(-.45, .45),
+    ));
+    _turn.forward(from: 0);
+  }
+
   void _onScaleStart(ScaleStartDetails d) {
     _zoomAtStart = _zoom;
+    _rotatingGesture = false;
     _turn.stop();
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
+    _rotatingGesture = d.pointerCount == 1;
     setState(() {
       if (d.pointerCount >= 2) {
         _zoom = (_zoomAtStart * d.scale).clamp(1.0, 3.0);
       } else {
-        const speed = .011;
+        final speed = .008 / math.sqrt(_zoom);
         _view = _clamp(
           CubeView(
             _view.yaw - d.focalPointDelta.dx * speed,
@@ -451,6 +493,7 @@ class ArrowBoardViewState extends State<ArrowBoardView>
           size: _box,
           painter: _BoardPainter(
             shape: _shape,
+            view: _view,
             cellPx: _cellPx,
             toScreen: _toScreen,
             faceShown: _faceShown,
@@ -488,7 +531,21 @@ class ArrowBoardViewState extends State<ArrowBoardView>
             onTapUp: _handleTap,
             onScaleStart: _onScaleStart,
             onScaleUpdate: _onScaleUpdate,
-            child: _paint(),
+            onScaleEnd: _onScaleEnd,
+            child: Stack(
+              children: [
+                Positioned.fill(child: _paint()),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton.filledTonal(
+                    tooltip: 'Reset cube view',
+                    onPressed: _resetView,
+                    icon: const Icon(Icons.center_focus_strong_rounded),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -547,6 +604,7 @@ class _Stroke {
 class _BoardPainter extends CustomPainter {
   _BoardPainter({
     required this.shape,
+    required this.view,
     required this.cellPx,
     required this.toScreen,
     required this.faceShown,
@@ -555,38 +613,80 @@ class _BoardPainter extends CustomPainter {
   });
 
   final BoardShape shape;
+  final CubeView view;
   final double cellPx;
   final Offset Function(V3) toScreen;
   final bool Function(int face) faceShown;
   final BoardPalette palette;
   final List<_Stroke> strokes;
 
-  /// Light from above and a little to the front.
-  static const _light = V3(.35, .45, .82);
-
   @override
   void paint(Canvas canvas, Size size) {
-    // Cube faces that face the camera, shaded so the box reads as 3D.
     final corners = shape.faceCorners;
-    for (var i = 0; i < corners.length; i++) {
-      if (!faceShown(i)) continue;
-      final path = Path()
-        ..addPolygon([for (final p in corners[i]) toScreen(p)], true);
-      final lit = (shape.normalOf(i).dot(_light) + 1) / 2;
-      canvas
-        ..drawPath(
-          path,
-          Paint()
-            ..color = Color.lerp(palette.faceDark, palette.faceLight, lit)!,
-        )
-        ..drawPath(
-          path,
-          Paint()
-            ..color = palette.faceEdge
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = math.max(1, cellPx * .04)
-            ..strokeJoin = StrokeJoin.round,
-        );
+    if (corners.isNotEmpty) {
+      final points = [
+        for (final face in corners)
+          for (final p in face) toScreen(p)
+      ];
+      final bounds = Rect.fromLTRB(
+        points.map((p) => p.dx).reduce(math.min),
+        points.map((p) => p.dy).reduce(math.min),
+        points.map((p) => p.dx).reduce(math.max),
+        points.map((p) => p.dy).reduce(math.max),
+      );
+      // A soft contact shadow anchors the solid cube in the scene.
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(bounds.center.dx, bounds.bottom + cellPx * .18),
+          width: bounds.width * .85,
+          height: cellPx * .7,
+        ),
+        Paint()
+          ..color = Colors.black.withValues(alpha: .18)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, cellPx * .4),
+      );
+      // The light stays above-left of the camera while the cube turns.
+      final light = view.right * -.4 + view.up * .65 + view.toViewer * .65;
+      for (var i = 0; i < corners.length; i++) {
+        if (!faceShown(i)) continue;
+        final path = Path()
+          ..addPolygon([for (final p in corners[i]) toScreen(p)], true);
+        final lit = (.15 + .85 * math.max(0.0, shape.normalOf(i).dot(light)))
+            .clamp(0.0, 1.0);
+        final base = Color.lerp(palette.faceDark, palette.faceLight, lit)!;
+        final rect = path.getBounds();
+        canvas.drawPath(
+            path,
+            Paint()
+              ..shader = LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.lerp(base, Colors.white, .12)!,
+                  base,
+                  Color.lerp(base, Colors.black, .09)!,
+                ],
+                stops: const [0, .45, 1],
+              ).createShader(rect));
+        // Clipped inner highlights give the edges a subtle bevel.
+        canvas.save();
+        canvas.clipPath(path);
+        canvas.drawPath(
+            path.shift(const Offset(0, 1)),
+            Paint()
+              ..color = Colors.white.withValues(alpha: .38 * lit)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = math.max(2, cellPx * .10)
+              ..strokeJoin = StrokeJoin.round);
+        canvas.restore();
+        canvas.drawPath(
+            path,
+            Paint()
+              ..color = palette.faceEdge.withValues(alpha: .8)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = math.max(1, cellPx * .035)
+              ..strokeJoin = StrokeJoin.round);
+      }
     }
 
     final dotPaint = Paint()..color = palette.dot;

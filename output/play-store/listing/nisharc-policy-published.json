@@ -1,0 +1,10 @@
+{
+  "policyId": "6ac6442b6c4e6372676fd2dc",
+  "gameId": "6aa045eaa0557358161cd58c",
+  "gameSlug": "arrow-puzzle",
+  "published": true,
+  "lastUpdated": "2026-10-07T00:00:00.000Z",
+  "privacyPolicyUrl": "https://nisharcstudios.vercel.app/privacy-policy/arrow-puzzle",
+  "apiUrl": "https://nisharcstudios.vercel.app/api/privacy-policies/arrow-puzzle",
+  "packageName": "com.nisharc.arrowpuzzle"
+}

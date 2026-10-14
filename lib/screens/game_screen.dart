@@ -8,6 +8,9 @@ import '../engine/level_generator.dart';
 import '../engine/puzzle_board.dart';
 import '../models/level.dart';
 import '../services/audio_service.dart';
+import '../services/backend_sync_service.dart';
+import '../services/player_session_service.dart';
+import '../services/local_storage_service.dart';
 import '../services/haptic_service.dart';
 import '../services/level_repository.dart';
 import '../state/game_controller.dart';
@@ -31,10 +34,38 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   GameController get _game => _current!;
   int _loadingLevel = 0;
   final TransformationController _zoom = TransformationController();
-  bool _revived = false;
+  Matrix4 _initialZoom = Matrix4.identity();
+  Size? _zoomViewport;
+  int? _zoomLevel;
   bool _dialogOpen = false;
   Timer? _resultFallback;
   String? _loadError;
+  String _attemptId = "";
+
+  void _record(String type, [Map<String, Object> details = const {}]) {
+    if (_current == null) return;
+    BackendSyncService.instance.record(type, {
+      "attemptId": _attemptId,
+      "level": _game.level.number,
+      "moves": _game.moves,
+      "mistakes": _game.mistakes,
+      "hintsUsed": _game.hintsUsed,
+      "lives": _game.lives,
+      "remainingArrows": _game.remainingArrows,
+      "status": _game.status.name,
+      "isCube": _game.level.isCube,
+      ...details,
+    });
+  }
+
+  Future<void> _beginAttempt() async {
+    _attemptId = DateTime.now().microsecondsSinceEpoch.toString();
+    PlayerSessionService.instance.setActivity(PlayerActivity.playing);
+    _record("start");
+    final storage = LocalStorageService();
+    final games = await storage.loadInt("backend_games_played");
+    await storage.saveInt("backend_games_played", games + 1);
+  }
 
   @override
   void initState() {
@@ -43,6 +74,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   Future<void> _load(int number) async {
+    AudioService().stopAll();
+    AudioService().playUITap();
     _loadingLevel = number;
     _loadError = null;
     final Level level;
@@ -56,13 +89,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     setState(() {
       _current?.dispose();
       _current = GameController(level);
-      _revived = false;
+      _zoomViewport = null;
       _zoom.value = Matrix4.identity();
     });
+    unawaited(_beginAttempt());
   }
 
   @override
   void dispose() {
+    _record("leave");
+    PlayerSessionService.instance.setActivity(PlayerActivity.home);
     _resultFallback?.cancel();
     _current?.dispose();
     _zoom.dispose();
@@ -70,6 +106,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _onMove(MoveResult result) {
+    _record("move", {
+      "arrowId": result.arrow.id,
+      "escaped": result is Escaped,
+      if (result is Blocked) "blockerId": result.blocker.id,
+    });
+    if (_game.status != GameStatus.playing) {
+      PlayerSessionService.instance.setActivity(PlayerActivity.paused);
+      _record("result");
+    }
     if (result is Escaped) {
       AudioService().playSlideOff();
       HapticService().lightTap();
@@ -96,6 +141,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         HapticService().levelComplete();
         _showResult(won: true);
       case GameStatus.lost:
+        AudioService().playGameOver();
         _showResult(won: false);
       case GameStatus.playing:
         break;
@@ -104,6 +150,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   Future<void> _showResult({required bool won}) async {
     _dialogOpen = true;
+    PlayerSessionService.instance.setActivity(PlayerActivity.paused);
     _resultFallback?.cancel();
     final action = await showGeneralDialog<_ResultAction>(
       context: context,
@@ -114,7 +161,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         won: won,
         level: _game.level.number,
         mistakes: _game.mistakes,
-        canRevive: !won && !_revived && !_game.stuck,
       ),
       transitionBuilder: (_, animation, __, child) => ScaleTransition(
         scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
@@ -132,16 +178,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         });
         _load(next);
       case _ResultAction.retry:
+        _record("restart");
         setState(() {
           _game.restart();
-          _revived = false;
-          _zoom.value = Matrix4.identity();
+          _zoom.value = _initialZoom.clone();
         });
-      case _ResultAction.revive:
-        setState(() {
-          _revived = true;
-          _game.revive();
-        });
+        unawaited(_beginAttempt());
       case _ResultAction.home:
       case null:
         Navigator.of(context).pop();
@@ -150,24 +192,27 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   void _hint() {
     final arrow = _game.hint();
-    AudioService().playUITap();
+    if (arrow != null) _record("hint", {"arrowId": arrow.id});
+    AudioService().playHint();
     if (arrow == null) return;
     HapticService().lightTap();
   }
 
   void _restart() {
+    _record("restart");
+    AudioService().stopAll();
+    AudioService().playUITap();
     setState(() {
       _game.restart();
-      _revived = false;
-      _zoom.value = Matrix4.identity();
+      _zoom.value = _initialZoom.clone();
     });
+    unawaited(_beginAttempt());
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    final palette = dark ? BoardPalette.dark : BoardPalette.light;
+    final palette = BoardPalette.fromScheme(theme.colorScheme);
 
     if (_current == null) {
       return Scaffold(
@@ -253,6 +298,65 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                           ),
                         ],
                       );
+                    }
+                    if (level.number >= 76) {
+                      // Keep large maps at a readable world size. Start with
+                      // the entire map fitted into the available viewport.
+                      const worldCell = 40.0;
+                      final mapW = boardW * worldCell + pad * 2;
+                      final mapH = boardH * worldCell + pad * 2;
+                      final fit = [
+                        constraints.maxWidth / mapW,
+                        constraints.maxHeight / mapH,
+                        1.0,
+                      ].reduce((a, b) => a < b ? a : b);
+                      final viewport =
+                          Size(constraints.maxWidth, constraints.maxHeight);
+                      if (_zoomViewport != viewport ||
+                          _zoomLevel != level.number) {
+                        _zoomViewport = viewport;
+                        _zoomLevel = level.number;
+                        _initialZoom = Matrix4.identity()
+                          ..translateByDouble((viewport.width - mapW * fit) / 2,
+                              (viewport.height - mapH * fit) / 2, 0, 1)
+                          ..scaleByDouble(fit, fit, fit, 1);
+                        _zoom.value = _initialZoom.clone();
+                      }
+                      return Stack(children: [
+                        Positioned.fill(
+                            child: InteractiveViewer(
+                          transformationController: _zoom,
+                          constrained: false,
+                          minScale: fit,
+                          maxScale: 3,
+                          boundaryMargin: const EdgeInsets.all(120),
+                          child: SizedBox(
+                            width: mapW,
+                            height: mapH,
+                            child: Center(
+                                child: ArrowBoardView(
+                              key: ValueKey(level.number),
+                              controller: _game,
+                              cellSize: worldCell,
+                              palette: palette,
+                              onMove: _onMove,
+                              onSettled: _onSettled,
+                            )),
+                          ),
+                        )),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: IconButton.filledTonal(
+                            tooltip: 'Show full map',
+                            onPressed: () {
+                              AudioService().playUITap();
+                              _zoom.value = _initialZoom.clone();
+                            },
+                            icon: const Icon(Icons.fit_screen_rounded),
+                          ),
+                        ),
+                      ]);
                     }
                     return InteractiveViewer(
                       transformationController: _zoom,
@@ -377,8 +481,8 @@ class _BottomBar extends StatelessWidget {
             icon: const Icon(Icons.lightbulb_rounded),
             label: const Text('Hint'),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFFC53D),
-              foregroundColor: const Color(0xFF3A2A00),
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
               textStyle: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
@@ -405,7 +509,10 @@ class _RoundIconButton extends StatelessWidget {
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
-        onTap: onTap,
+        onTap: () {
+          AudioService().playUITap();
+          onTap();
+        },
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Icon(icon, size: 24),
@@ -415,25 +522,23 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
-enum _ResultAction { next, retry, revive, home }
+enum _ResultAction { next, retry, home }
 
 class _ResultCard extends StatelessWidget {
   const _ResultCard({
     required this.won,
     required this.level,
     required this.mistakes,
-    required this.canRevive,
   });
 
   final bool won;
   final int level;
   final int mistakes;
-  final bool canRevive;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = won ? const Color(0xFF22C55E) : const Color(0xFFF03E5A);
+    final accent = won ? theme.colorScheme.primary : theme.colorScheme.error;
     return Center(
       child: Material(
         color: theme.colorScheme.surface,
@@ -474,28 +579,29 @@ class _ResultCard extends StatelessWidget {
               const SizedBox(height: 22),
               if (won)
                 _WideButton(
-                  label: 'Next Level',
+                  label: level >= LevelRepository.instance.bundledCount
+                      ? 'Back to Home'
+                      : 'Next Level',
                   color: accent,
-                  onTap: () => Navigator.pop(context, _ResultAction.next),
+                  onTap: () => Navigator.pop(
+                      context,
+                      level >= LevelRepository.instance.bundledCount
+                          ? _ResultAction.home
+                          : _ResultAction.next),
                 )
               else ...[
                 _WideButton(
                   label: 'Try Again',
-                  color: const Color(0xFF2E90FF),
+                  color: theme.colorScheme.primary,
                   onTap: () => Navigator.pop(context, _ResultAction.retry),
                 ),
-                if (canRevive) ...[
-                  const SizedBox(height: 10),
-                  _WideButton(
-                    label: 'Continue  +1 ♥',
-                    color: accent,
-                    onTap: () => Navigator.pop(context, _ResultAction.revive),
-                  ),
-                ],
               ],
               const SizedBox(height: 6),
               TextButton(
-                onPressed: () => Navigator.pop(context, _ResultAction.home),
+                onPressed: () {
+                  AudioService().playUITap();
+                  Navigator.pop(context, _ResultAction.home);
+                },
                 child: const Text('Home'),
               ),
             ],
@@ -522,10 +628,15 @@ class _WideButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: FilledButton(
-        onPressed: onTap,
+        onPressed: () {
+          AudioService().playUITap();
+          onTap();
+        },
         style: FilledButton.styleFrom(
           backgroundColor: color,
-          foregroundColor: Colors.white,
+          foregroundColor: color == Theme.of(context).colorScheme.error
+              ? Theme.of(context).colorScheme.onError
+              : Theme.of(context).colorScheme.onPrimary,
           textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
         child: Text(label),

@@ -1,15 +1,16 @@
 // lib/screens/level_select_screen.dart
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/level_generator.dart';
 import '../services/level_repository.dart';
 import '../state/progress_provider.dart';
-import '../widgets/tier_badge.dart';
+import '../services/audio_service.dart';
 
-/// Grid of levels. Cleared and current levels are playable; the next few
-/// locked levels are shown greyed out.
+/// Cleared and current levels are playable; later levels stay locked.
 class LevelSelectScreen extends ConsumerWidget {
   const LevelSelectScreen({super.key, required this.onPlay});
 
@@ -18,11 +19,21 @@ class LevelSelectScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(progressProvider).currentLevel;
-    final shown = ((current + 30) ~/ 10 + 1) * 10;
+    final total = LevelRepository.instance.bundledCount;
+    final shown = math.min(total, ((current + 30) ~/ 10 + 1) * 10);
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Levels')),
+      appBar: AppBar(
+          title: const Text('Levels'),
+          leading: IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              AudioService().playUITap();
+              Navigator.of(context).pop();
+            },
+          )),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -37,15 +48,15 @@ class LevelSelectScreen extends ConsumerWidget {
           final isCurrent = level == current;
           final locked = level > current;
           final bg = isCurrent
-              ? const Color(0xFF2E90FF)
+              ? scheme.primary
               : cleared
                   ? scheme.primaryContainer
                   : scheme.surfaceContainerHighest.withValues(alpha: .5);
           final fg = isCurrent
-              ? Colors.white
+              ? scheme.onPrimary
               : cleared
                   ? scheme.onPrimaryContainer
-                  : scheme.onSurface.withValues(alpha: .35);
+                  : scheme.onSurface.withValues(alpha: locked ? .35 : 1);
           return Material(
             color: bg,
             borderRadius: BorderRadius.circular(18),
@@ -60,13 +71,13 @@ class LevelSelectScreen extends ConsumerWidget {
               child: Stack(
                 children: [
                   if (LevelRepository.instance.isCube(level))
-                    const Positioned(
+                    Positioned(
                       bottom: 6,
                       right: 6,
                       child: Icon(
                         Icons.view_in_ar_rounded,
                         size: 16,
-                        color: CubeBadge.color,
+                        color: scheme.primary,
                       ),
                     ),
                   if (LevelTier.forLevel(level) != LevelTier.normal)
@@ -76,7 +87,7 @@ class LevelSelectScreen extends ConsumerWidget {
                       child: Icon(
                         Icons.local_fire_department_rounded,
                         size: 16,
-                        color: TierBadge.colorFor(LevelTier.forLevel(level)),
+                        color: scheme.primary,
                       ),
                     ),
                   Center(

@@ -3,6 +3,10 @@
 // Builds the bundled levels: assets/levels/levels.json.
 //
 //   dart run tool/build_levels.dart [count]
+//   python3 tool/curate_levels.py
+//   dart run tool/enlarge_maps.dart
+//
+// Generate 300 source puzzles, then curate the shipped 225-level campaign.
 //
 // Every level is checked with the solver and must be strictly harder than the
 // one before it (see BoardStats.score): more arrow to trace, longer chains of

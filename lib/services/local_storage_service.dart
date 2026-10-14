@@ -1,5 +1,6 @@
 // lib/services/local_storage_service.dart
 
+import 'backend_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalStorageService {
@@ -24,6 +25,7 @@ class LocalStorageService {
   Future<void> saveInt(String key, int value) async {
     await _ensureInitialized();
     await _prefs.setInt(key, value);
+    BackendSyncService.instance.changed();
   }
 
   Future<int> loadInt(String key, {int defaultValue = 0}) async {
@@ -35,6 +37,7 @@ class LocalStorageService {
   Future<void> saveBoolSetting(String key, bool value) async {
     await _ensureInitialized();
     await _prefs.setBool(key, value);
+    BackendSyncService.instance.changed();
   }
 
   /// Load user settings.

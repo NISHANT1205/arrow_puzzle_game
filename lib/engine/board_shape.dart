@@ -381,9 +381,14 @@ class CubeShape extends BoardShape {
     final half = n / 2;
     final rel = p - V3(half, half, half);
     final (w, h) = extent;
+    // A distant perspective camera keeps the board readable while giving
+    // near edges their natural size and converging the far edges.
+    final distance = n * 7.0;
+    final perspective =
+        distance / math.max(distance * .25, distance - rel.dot(view.toViewer));
     return Pt(
-      rel.dot(view.right) * _scale + w / 2,
-      -rel.dot(view.up) * _scale + h / 2,
+      rel.dot(view.right) * _scale * perspective + w / 2,
+      -rel.dot(view.up) * _scale * perspective + h / 2,
     );
   }
 
@@ -411,7 +416,7 @@ class CubeShape extends BoardShape {
 
   @override
   bool faceVisible(int face, CubeView view) =>
-      _faces[face].normal.dot(view.toViewer) > 1e-6;
+      _faces[face].normal.dot(view.toViewer) > 1 / 14;
 
   @override
   Map<String, dynamic> toJson() =>

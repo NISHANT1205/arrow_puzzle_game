@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/progress_provider.dart';
 import '../state/settings_provider.dart';
+import '../services/audio_service.dart';
+import 'privacy_policy_screen.dart';
+import 'profile_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -12,9 +15,24 @@ class SettingsScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+          title: const Text('Settings'),
+          leading: IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              AudioService().playUITap();
+              Navigator.of(context).pop();
+            },
+          )),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text("Player profile"),
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.volume_up_outlined),
             title: const Text('Sound effects'),
@@ -25,13 +43,19 @@ class SettingsScreen extends ConsumerWidget {
             secondary: const Icon(Icons.vibration),
             title: const Text('Haptics'),
             value: settings.hapticsEnabled,
-            onChanged: notifier.setHapticsEnabled,
+            onChanged: (value) {
+              AudioService().playUITap();
+              notifier.setHapticsEnabled(value);
+            },
           ),
           SwitchListTile(
             secondary: const Icon(Icons.dark_mode_outlined),
             title: const Text('Dark theme'),
             value: settings.darkMode,
-            onChanged: notifier.setDarkMode,
+            onChanged: (value) {
+              AudioService().playUITap();
+              notifier.setDarkMode(value);
+            },
           ),
           const Divider(),
           ListTile(
@@ -39,6 +63,7 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Reset progress'),
             subtitle: const Text('Start again from level 1'),
             onTap: () async {
+              AudioService().playUITap();
               final confirmed = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -46,11 +71,17 @@ class SettingsScreen extends ConsumerWidget {
                   content: const Text('You will go back to level 1.'),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.pop(context, false),
+                      onPressed: () {
+                        AudioService().playUITap();
+                        Navigator.pop(context, false);
+                      },
                       child: const Text('Cancel'),
                     ),
                     FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
+                      onPressed: () {
+                        AudioService().playUITap();
+                        Navigator.pop(context, true);
+                      },
                       child: const Text('Reset'),
                     ),
                   ],
@@ -59,6 +90,18 @@ class SettingsScreen extends ConsumerWidget {
               if (confirmed == true) {
                 await ref.read(progressProvider.notifier).resetProgress();
               }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Privacy policy'),
+            onTap: () {
+              AudioService().playUITap();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const PrivacyPolicyScreen(),
+                ),
+              );
             },
           ),
         ],

@@ -17,8 +17,7 @@ import '../models/level.dart';
 import 'board_shape.dart';
 import 'puzzle_board.dart';
 
-/// Difficulty badge shown on a level. Levels only ever get harder, so the
-/// badge marks how far along the curve a level is.
+/// Difficulty badges for the three curated 75-level slots and their peaks.
 enum LevelTier {
   normal('Normal'),
   hard('Hard'),
@@ -28,8 +27,8 @@ enum LevelTier {
   final String label;
 
   static LevelTier forLevel(int number) {
-    if (number >= 200) return LevelTier.superHard;
-    if (number >= 100) return LevelTier.hard;
+    if (number % 5 == 0 || number > 150) return LevelTier.superHard;
+    if (number > 75) return LevelTier.hard;
     return LevelTier.normal;
   }
 }

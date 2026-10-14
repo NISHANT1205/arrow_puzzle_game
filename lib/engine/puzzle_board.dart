@@ -244,7 +244,7 @@ class BoardStats {
 
   /// One number for "how hard is this board": more arrow to trace, longer
   /// chains of moves that must happen in order, and fewer safe first moves
-  /// all make it harder. Bundled levels strictly increase in this score.
+  /// all make it harder. Used to rank puzzles within each curated slot.
   double get score =>
       cells * (1 + .2 * layers) * (.6 + trapRatio) * shapeFactor;
 

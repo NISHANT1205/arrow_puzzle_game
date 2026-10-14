@@ -1,0 +1,23 @@
+Generated with the built-in image_gen tool. Six separate prompts, one per asset.
+
+Shared specification:
+Finished mobile Arrow Puzzle player avatar, one isolated character. Premium
+playful 3D toy-like puzzle mascot, rounded geometric shapes, clean soft clay
+material, bevels, crisp silhouette, vibrant controlled colors, studio lighting,
+subtle dimensional shading. Square image; full character centered within the
+central 78% of canvas, transparent margin, readable at 48 pixels. Transparent
+background, no badge, scenery, text, letters, numbers, fruits or watermark.
+Matching family based on directional arrow escape puzzles, mazes and 3D cubes.
+
+arrow-scout: Cheerful teal arrow-shaped robot explorer. Thick upward arrow body
+with soft bevels, expressive dark eyes on arrowhead, tiny arms, confident smile.
+cube-bot: Friendly indigo puzzle-cube robot head. Three-dimensional rounded cube,
+cyan directional arrow engraved on forehead, expressive face, tiny antennas.
+maze-guardian: Cute lime maze guardian. Rounded square labyrinth-tile head,
+raised winding maze grooves, warm expressive face and tiny feet.
+path-finder: Coral-orange compass navigator. Rounded compass body, strong white
+diagonal arrow-pointer crest, expressive eyes, smile, small explorer goggles.
+bolt-runner: Golden-yellow speedy arrow. Arrowhead helmet, lightning-shaped
+compact body, determined playful eyes, tiny sneakers, compact silhouette.
+portal-mage: Violet portal puzzle magician. Friendly face inside a chunky hollow
+hexagonal portal frame, cyan arrow emblem on top, tiny sparkle, expressive eyes.

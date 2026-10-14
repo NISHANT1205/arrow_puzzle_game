@@ -1,9 +1,9 @@
 name: arrow_puzzle
-description: "Arrow puzzle: tap snake-like arrows to slide them off the board without crashing. Endless, always-solvable levels."
+description: "Offline arrow escape puzzles with 225 curated levels and 3D cube challenges."
 
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,7 +16,9 @@ dependencies:
   flutter_riverpod: ^2.4.0
 
   # Persistence
+  flutter_soloud: ^4.1.7
   shared_preferences: ^2.2.0
+  http: ^1.2.0
   
 dev_dependencies:
   flutter_test:
@@ -31,6 +33,8 @@ flutter:
   assets:
     - assets/icon/
     - assets/levels/
+    - assets/audio/
+    - assets/avatars/puzzle/
 
 flutter_launcher_icons:
   android: true

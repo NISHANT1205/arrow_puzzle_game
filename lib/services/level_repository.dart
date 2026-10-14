@@ -1,14 +1,11 @@
 // lib/services/level_repository.dart
 //
-// Serves levels: the bundled, pre-checked levels first (each one harder than
-// the one before), then endless generated levels at the hardest settings.
+// Serves the curated, pre-checked campaign of 225 levels.
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 
-import '../engine/level_generator.dart';
 import '../models/level.dart';
 import '../models/level_codec.dart';
 
@@ -49,14 +46,9 @@ class LevelRepository {
 
   Future<Level> level(int number) async {
     final bundled = await _load();
-    if (number >= 1 && number <= bundled.length) {
-      return LevelCodec.decodeLevel(bundled[number - 1]);
+    if (number < 1 || number > bundled.length) {
+      throw RangeError.range(number, 1, bundled.length, 'number');
     }
-    try {
-      // Big boards take a moment; keep the UI thread free.
-      return await compute(LevelGenerator.generate, number);
-    } catch (_) {
-      return LevelGenerator.generate(number);
-    }
+    return LevelCodec.decodeLevel(bundled[number - 1]);
   }
 }

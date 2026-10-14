@@ -5,6 +5,7 @@
 import 'dart:io';
 
 import 'package:arrow_puzzle/engine/puzzle_board.dart';
+import 'package:arrow_puzzle/engine/board_shape.dart';
 import 'package:arrow_puzzle/models/arrow_path.dart';
 import 'package:arrow_puzzle/screens/game_screen.dart';
 import 'package:arrow_puzzle/services/level_repository.dart';
@@ -48,12 +49,18 @@ void main() {
       await _solveByTapping(tester);
       expect(game.status, GameStatus.won, reason: 'level $n');
       await _waitForDialog(tester, 'Level Complete!', n);
-      await tester.tap(find.text('Next Level'));
-      await _waitForBoard(tester, n + 1);
+      if (n < bundledCount) {
+        await tester.tap(find.text('Next Level'));
+        await _waitForBoard(tester, n + 1);
+      } else {
+        expect(find.text('Next Level'), findsNothing);
+        expect(find.text('Back to Home'), findsOneWidget);
+      }
     }
   }, timeout: const Timeout(Duration(minutes: 20)));
 
-  testWidgets('three crashes lose, and Continue / Try Again recover',
+  testWidgets(
+      'three crashes lose without Continue; Try Again restarts the level',
       (tester) async {
     await _openLevel(tester, 40);
     for (var i = 0; i < GameController.maxLives; i++) {
@@ -63,13 +70,6 @@ void main() {
     expect(_game(tester).status, GameStatus.lost);
     await _waitForDialog(tester, 'Out of lives', 40);
 
-    // Continue with one heart, crash again: lost for good this time.
-    await tester.tap(find.textContaining('Continue'));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(_game(tester).lives, 1);
-    await _tapArrow(tester, _blockedArrow(tester));
-    await tester.pump(const Duration(milliseconds: 1600));
-    await _waitForDialog(tester, 'Out of lives', 40);
     expect(find.textContaining('Continue'), findsNothing);
 
     // Try Again restarts the level, which can then be won.
@@ -81,6 +81,31 @@ void main() {
     await _waitForDialog(tester, 'Level Complete!', 40);
   });
 
+  testWidgets('large flat maps start fully fitted and can reset zoom',
+      (tester) async {
+    final number = bundled.firstWhere(
+        (l) => (l['n'] as int) >= 76 && !l.containsKey('shape'))['n'] as int;
+    await _openLevel(tester, number);
+    final viewer =
+        tester.widget<InteractiveViewer>(find.byType(InteractiveViewer));
+    final initial = viewer.transformationController!.value.clone();
+    expect(initial.getMaxScaleOnAxis(), lessThan(1));
+    expect(tester.widget<ArrowBoardView>(find.byType(ArrowBoardView)).cellSize,
+        40);
+    final mapRect = tester.getRect(find.byType(ArrowBoardView));
+    final viewport = tester.getRect(find.byType(InteractiveViewer));
+    expect(mapRect.left, greaterThanOrEqualTo(viewport.left));
+    expect(mapRect.right, lessThanOrEqualTo(viewport.right));
+    expect(mapRect.top, greaterThanOrEqualTo(viewport.top));
+    expect(mapRect.bottom, lessThanOrEqualTo(viewport.bottom));
+    viewer.transformationController!.value = initial.clone()
+      ..scaleByDouble(2, 2, 1, 1);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Show full map'));
+    await tester.pump();
+    expect(viewer.transformationController!.value, initial);
+  });
+
   testWidgets('a cube turns when dragged', (tester) async {
     await _openLevel(tester, _firstCube(allSides: true));
     final before = _board(tester).view;
@@ -89,6 +114,22 @@ void main() {
     final after = _board(tester).view;
     expect(after.yaw, isNot(closeTo(before.yaw, .01)));
     expect(after.pitch, isNot(closeTo(before.pitch, .01)));
+  });
+
+  testWidgets('cube rotation settles and the reset button restores its view',
+      (tester) async {
+    await _openLevel(tester, _firstCube(allSides: true));
+    await tester.drag(find.byType(ArrowBoardView), const Offset(-120, 60));
+    await tester.pump(const Duration(milliseconds: 600));
+    final settled = _board(tester).view;
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_board(tester).view.yaw, settled.yaw);
+    expect(_board(tester).view.pitch, settled.pitch);
+    await tester.tap(find.byTooltip('Reset cube view'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(_board(tester).view.yaw, closeTo(CubeView.iso.yaw, .001));
+    expect(_board(tester).view.pitch, closeTo(CubeView.iso.pitch, .001));
   });
 
   testWidgets('a hint on the back of the cube turns it into view',
@@ -155,8 +196,8 @@ Future<void> _tapArrow(WidgetTester tester, ArrowPath arrow) async {
     await tester.pump();
     expect(_board(tester).isShown(arrow.head), isTrue);
   }
-  final origin = tester.getTopLeft(find.byType(ArrowBoardView));
-  await tester.tapAt(origin + _board(tester).positionOf(arrow.head));
+  final box = tester.renderObject<RenderBox>(find.byType(ArrowBoardView));
+  await tester.tapAt(box.localToGlobal(_board(tester).positionOf(arrow.head)));
   await tester.pump(const Duration(milliseconds: 16));
 }
 

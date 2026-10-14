@@ -1,0 +1,6 @@
+Flutter analysis: no issues found.
+Flutter tests: 38 passed.
+Bundle package, version, activity, non-debug signature and upload certificate: verified.
+Native libraries: 33 verified for 16 KB ELF alignment.
+Bundle packaging: PAGE_ALIGNMENT_16K.
+Android runtime installation smoke test: not run; no connected device or configured emulator.

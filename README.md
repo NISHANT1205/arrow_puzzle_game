@@ -178,3 +178,71 @@ flutter run
 flutter test
 flutter build apk --release
 ```
+
+## Sound effects
+
+Original short PCM effects are preloaded before the home screen using
+`flutter_soloud`. Taps start immediately in the native mixer, with at most
+eight simultaneous effects and no playback queue. Win/loss/revive cues
+replace old effects. Muting or backgrounding stops active voices; returning
+does not replay stale taps. Sound effects can be disabled in Settings.
+
+The native plugin needs CMake on the build machine (`brew install cmake`
+on macOS). Restart the app fully after adding the plugin.
+
+Regenerate the original audio with `python3 tool/generate_sounds.py`.
+Run `flutter test test/audio_service_test.dart` for burst/mute/lifecycle
+checks. For a native device check, run
+`flutter run -t tool/audio_smoke.dart -d <device-id>`; it captures mixer PCM
+while dispatching 200 taps 10 ms apart, then verifies mute and recovery.
+This checks native output, not physical speaker/Bluetooth latency.
+
+### NishArc backend sync
+
+Arrow Puzzle uses the same live player API as Fruit Merge and Fruit Splash,
+with `gameSlug: arrow-puzzle`. A guest is created on the first online launch;
+its bearer token is saved locally and reused. A random per-installation
+registration secret makes registration retries recover the same player even
+when the original response was lost. Successful registrations and profile
+visits count toward Users today; only actual heartbeats contribute session
+time and online status. Settings → Player profile updates
+username and avatar through the authenticated profile endpoint. On first open,
+a themed Enter your name dialog offers an editable guest username and saves it
+through that same API. It contains no avatar controls. Taken names stay in the
+dialog for correction; Not now allows offline play. The welcome is shown once
+per app installation/data set, and the profile remains editable afterward.
+
+- `POST /players/guest`: create guest; `GET /players/me`: restore player.
+- `POST /players/profile`: update username/avatar.
+- Campaign progress uses `progress.currentLevel` as the highest
+  unlocked campaign level (1–225), not a high score. Level wins advance it;
+  Reset progress sends level 1. Lifetime attempts are sent as `gamesPlayed`.
+  Replays/restarts count as attempts; revives continue the same attempt.
+- `POST /players/session`: 30-second heartbeats and activity changes, with
+  foreground/playing time, session IDs and increasing sequence numbers.
+- `POST /arrow-puzzle/sync`: campaign progress, sound/haptics/theme settings and
+  gameplay events (start, arrow moves, hints, result, restart, revive, leave,
+  reset). Event IDs prevent duplicates; revisions reject stale snapshots.
+  The backend stores `Player.currentLevel` and shows Current level in player
+  lists, profiles and leaderboards; Arrow Puzzle does not submit high scores.
+
+Detailed updates are persisted on the device before upload, sent in batches of
+up to 100 events and removed only after acknowledgement. Network failures retry
+in 30 seconds and on app resume; gameplay remains available offline. Profiles
+and session time follow the same behavior as the reference games. This is
+upload syncing, not username-based recovery or cross-device game restoration.
+
+The detailed sync endpoint and models are in the adjacent **NishArc Studios**
+repository and were deployed with commit `0b69521`. Live guest registration,
+profile edits, session heartbeats, level/settings/gameplay syncing and leaderboard
+requests were verified. Previously queued detailed updates upload on retry or
+app resume. The backend counts registered/profile-visiting players in Users
+today even if their first session heartbeat was missing; time still comes only
+from actual heartbeats.
+Set `--dart-define=NISHARC_API_BASE_URL=https://your-host/api` for staging.
+The in-app privacy copy now describes backend collection; update the public
+policy and store data disclosures along with the release.
+
+Validation: `flutter analyze`, `flutter test`; backend:
+`node --import tsx backend/scripts/test-arrow-sync.ts` and
+`node_modules/.bin/tsc --noEmit --incremental false`.

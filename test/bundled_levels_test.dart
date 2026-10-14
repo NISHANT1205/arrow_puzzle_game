@@ -1,5 +1,4 @@
-// Checks every bundled level: it loads, it is solvable, it is harder than
-// the level before it, and a game on it always ends in a win or a loss.
+// Checks the curated schedule, solvability, and gameplay of all 225 levels.
 
 import 'dart:io';
 import 'dart:math';
@@ -18,10 +17,25 @@ void main() {
   );
   final levels = [for (final l in raw) LevelCodec.decodeLevel(l)];
 
-  test('there are at least 250 levels, numbered in order', () {
-    expect(levels.length, greaterThanOrEqualTo(250));
+  test('there are 225 levels, numbered in order', () {
+    expect(levels.length, 225);
     for (var i = 0; i < levels.length; i++) {
       expect(levels[i].number, i + 1);
+    }
+  });
+
+  test('maps from level 76 contain at least 50 percent more dots', () {
+    for (var i = 0; i < levels.length; i++) {
+      if (i < 75) {
+        expect(raw[i].containsKey('originalDots'), isFalse);
+      } else {
+        final original = raw[i]['originalDots'] as int;
+        expect(levels[i].shape.cells.length,
+            greaterThanOrEqualTo((original * 1.5).ceil()),
+            reason: 'level ${i + 1}');
+        // Regenerated boards use the enlarged area for actual puzzle paths.
+        expect(levels[i].arrows.length, greaterThan(10));
+      }
     }
   });
 
@@ -37,46 +51,32 @@ void main() {
     }
   });
 
-  test('every level is harder than the one before', () {
-    BoardStats? previous;
-    for (final level in levels) {
-      final stats = _board(level).analyze();
-      if (previous != null) {
-        expect(
-          stats.score,
-          greaterThan(previous.score),
-          reason: 'level ${level.number} is not harder than the one before',
-        );
+  test('each slot retains its hardest 75 with peaks every fifth level', () {
+    final sources = <int>{};
+    for (var slot = 0; slot < 3; slot++) {
+      final regular = <double>[];
+      final hardest = <double>[];
+      for (var i = slot * 75; i < (slot + 1) * 75; i++) {
+        final source = raw[i]['sourceLevel'] as int;
+        expect(sources.add(source), isTrue);
+        expect(source, inInclusiveRange(slot * 100 + 26, (slot + 1) * 100));
+        final score = _board(levels[i]).analyze().score;
+        (levels[i].number % 5 == 0 ? hardest : regular).add(score);
       }
-      previous = stats;
+      expect(hardest.length, 15);
+      expect(regular.length, 60);
+      expect(hardest.reduce(min), greaterThan(regular.reduce(max)));
+      expect(hardest, orderedEquals([...hardest]..sort()));
+      expect(regular, orderedEquals([...regular]..sort()));
     }
   });
 
-  test('flat boards never shrink', () {
-    Level? previous;
-    for (final level in levels.where((l) => !l.isCube)) {
-      if (previous != null) {
-        expect(level.cols, greaterThanOrEqualTo(previous.cols));
-        expect(level.rows, greaterThanOrEqualTo(previous.rows));
-      }
-      previous = level;
-    }
-  });
-
-  test('levels below 100 are flat; cubes come every 5 levels from 100', () {
-    final cubes = [
-      for (final l in levels)
-        if (l.isCube) l.number,
-    ];
-    expect(cubes.length, greaterThanOrEqualTo(30));
-    for (final n in cubes) {
-      expect(n, greaterThanOrEqualTo(100));
-      expect(n % 5, 0);
-    }
+  test('selected cubes preserve their original face coverage', () {
     for (final l in levels.where((l) => l.isCube)) {
       final shape = l.shape as CubeShape;
       // From level 150 cubes have arrows on all six sides.
-      expect(shape.allSides, l.number >= 150, reason: 'level ${l.number}');
+      expect(shape.allSides, (raw[l.number - 1]['sourceLevel'] as int) >= 150,
+          reason: 'level ${l.number}');
       if (shape.allSides) {
         final perFace = List.filled(6, 0);
         for (final a in l.arrows) {
