@@ -20,10 +20,23 @@ void main() async {
   } catch (_) {
     // The game screen loads (and reports) levels on demand.
   }
-  AudioService().setEnabled(await LocalStorageService()
-      .loadBoolSetting('sound_enabled', defaultValue: true));
+  final storage = LocalStorageService();
+  final settings = AppSettings(
+    soundEnabled:
+        await storage.loadBoolSetting('sound_enabled', defaultValue: true),
+    hapticsEnabled:
+        await storage.loadBoolSetting('haptics_enabled', defaultValue: true),
+    darkMode: await storage.loadBoolSetting('dark_mode', defaultValue: false),
+  );
+  AudioService().setEnabled(settings.soundEnabled);
   await AudioService().initialize();
-  runApp(const ProviderScope(child: ArrowPuzzleApp()));
+  runApp(ProviderScope(
+    overrides: [
+      settingsProvider
+          .overrideWith((ref) => SettingsNotifier(initialSettings: settings))
+    ],
+    child: const ArrowPuzzleApp(),
+  ));
   unawaited(BackendSyncService.instance.start());
 }
 

@@ -1,3 +1,4 @@
+import 'player_auth_client.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -43,7 +44,7 @@ class PlayerProfileService {
     http.Client? client,
     Future<SharedPreferences>? preferences,
     String baseUrl = ApiConfig.playerApiBaseUrl,
-  })  : _client = client ?? http.Client(),
+  })  : _client = PlayerAuthClient(client ?? http.Client(), gameSlug: 'arrow-puzzle', tokenKey: 'player_profile_token_arrow-puzzle', preferences: preferences),
         _preferences = preferences ?? SharedPreferences.getInstance(),
         _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), '');
   static final instance = PlayerProfileService();

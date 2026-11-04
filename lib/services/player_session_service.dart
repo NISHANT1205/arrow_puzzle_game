@@ -1,3 +1,4 @@
+import 'player_auth_client.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -19,7 +20,7 @@ class PlayerSessionService with WidgetsBindingObserver {
     String baseUrl = ApiConfig.playerApiBaseUrl,
     this.heartbeatInterval = const Duration(seconds: 30),
     Duration Function()? elapsed,
-  })  : _client = client ?? http.Client(),
+  })  : _client = PlayerAuthClient(client ?? http.Client(), gameSlug: 'arrow-puzzle', tokenKey: 'player_profile_token_arrow-puzzle', preferences: preferences),
         _profiles = profiles ?? PlayerProfileService.instance,
         _preferences = preferences ?? SharedPreferences.getInstance(),
         _baseUrl = baseUrl.replaceFirst(RegExp(r'/$'), ''),
@@ -46,6 +47,7 @@ class PlayerSessionService with WidgetsBindingObserver {
   PlayerActivity _activity = PlayerActivity.home;
   String? _sessionId;
   String? _sessionToken;
+  String? _sessionPlayerId;
   int _sequence = 1;
   int _lastCapture = 0;
   int _activeMs = 0;
@@ -104,6 +106,7 @@ class PlayerSessionService with WidgetsBindingObserver {
       (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
     ).join();
     _sessionToken = prefs.getString(PlayerProfileService.tokenKey);
+    _sessionPlayerId = prefs.getString(PlayerProfileService.idKey);
     _clock.start();
     _lastCapture = _elapsed;
     _started = true;
@@ -186,7 +189,7 @@ class PlayerSessionService with WidgetsBindingObserver {
           _scheduleRetry();
           break;
         }
-        if (_sessionToken != token) {
+        if (_sessionToken != token && (_sessionPlayerId == null || _sessionPlayerId != prefs.getString(PlayerProfileService.idKey))) {
           _sessionId = List.generate(
               16,
               (_) => Random.secure()
@@ -194,6 +197,7 @@ class PlayerSessionService with WidgetsBindingObserver {
                   .toRadixString(16)
                   .padLeft(2, '0')).join();
           _sessionToken = token;
+          _sessionPlayerId = prefs.getString(PlayerProfileService.idKey);
           _sequence = 1;
           _pending = null;
           _dirty = true;
@@ -212,6 +216,9 @@ class PlayerSessionService with WidgetsBindingObserver {
             .timeout(const Duration(seconds: 15));
         if (response.statusCode < 200 || response.statusCode >= 300) {
           debugPrint('Session heartbeat failed: HTTP ${response.statusCode}');
+          if (response.statusCode == 409 && _requiresNewSession(response.body)) {
+            _restartSession();
+          }
           if (response.statusCode == 401) {
             if (prefs.getString(PlayerProfileService.tokenKey) == token) {
               await prefs.remove(PlayerProfileService.tokenKey);
@@ -237,6 +244,8 @@ class PlayerSessionService with WidgetsBindingObserver {
           }
           break;
         }
+        _sessionToken = prefs.getString(PlayerProfileService.tokenKey);
+        _sessionPlayerId = prefs.getString(PlayerProfileService.idKey);
         _retryTimer?.cancel();
         _retryFailures = 0;
         final received =
@@ -262,6 +271,25 @@ class PlayerSessionService with WidgetsBindingObserver {
       _busy = false;
       _idle?.complete();
     }
+  }
+
+  bool _requiresNewSession(String body) {
+    try {
+      final data = jsonDecode(body);
+      final message = data is Map ? data['error'] : null;
+      return message is String && (message.startsWith('Start a new session') || message.startsWith('Session ended or sequence'));
+    } on FormatException { return false; }
+  }
+
+  void _restartSession() {
+    final random = Random.secure();
+    _sessionId = List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+    _sequence = 1;
+    _activeMs = 0;
+    _playingMs = 0;
+    _lastCapture = _elapsed;
+    _pending = null;
+    lastAcknowledgedSession = null;
   }
 
   Future<void> stop() async {

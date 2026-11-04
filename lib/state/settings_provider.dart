@@ -33,8 +33,9 @@ class AppSettings {
 class SettingsNotifier extends StateNotifier<AppSettings> {
   final LocalStorageService _storage = LocalStorageService();
 
-  SettingsNotifier() : super(const AppSettings()) {
-    _initialize();
+  SettingsNotifier({AppSettings? initialSettings})
+      : super(initialSettings ?? const AppSettings()) {
+    if (initialSettings == null) _initialize();
   }
 
   Future<void> _initialize() async {

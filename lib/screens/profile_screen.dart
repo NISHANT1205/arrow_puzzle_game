@@ -68,8 +68,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Player profile')),
         body: ListView(padding: const EdgeInsets.all(24), children: [
-          const Text(
-              'Your guest profile is created automatically when online.'),
+          // const Text(
+          //     'Your guest profile is created automatically when online.'),
           const SizedBox(height: 20),
           Center(child: PlayerAvatar(avatarId: _avatar, size: 100)),
           const SizedBox(height: 20),

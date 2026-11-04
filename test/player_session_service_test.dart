@@ -186,4 +186,20 @@ void main() {
     await service.stop();
     client.close();
   });
+  test('rejected session restarts while concurrent collision keeps its request', () async {
+    for (final message in ['Start a new session with sequence 1', 'Session ended or sequence is out of order', 'Session request collided; retry the same request']) {
+      SharedPreferences.setMockInitialValues({'player_profile_token_arrow-puzzle': 'test-token'});
+      final sent = <Map<String, dynamic>>[];
+      final service = PlayerSessionService(client: MockClient((request) async {
+        sent.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return sent.length == 1 ? http.Response(jsonEncode({'error': message}), 409) : http.Response('{"session":{}}', 200);
+      }));
+      await service.start();
+      await service.flush();
+      expect(sent[1]['sequence'], 1);
+      expect(sent[1]['sessionId'] == sent[0]['sessionId'], message.contains('collided'));
+      await service.stop();
+    }
+  });
+
 }
